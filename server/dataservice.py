@@ -2,8 +2,29 @@
 # It makes use of PickleDB-backed data layer and has data on all the following: users, workouts, PRs, leaderboards, schedules, and friends
 
 import re
+import pyodbc
+import os
+import database_server
+from dotenv import load_dotenv
 from pickledb import PickleDB
 from datetime import datetime, timedelta, timezone, date
+
+load_dotenv()
+
+print(pyodbc.drivers())
+
+server = os.getenv("DB_SERVER")
+#database = os.getenv("DB_NAME")
+database_master = 'master'
+database = os.getenv("DB_NAME")
+database_copy = 'RoseShreddedNerdsCopy'
+username = os.getenv("DB_USERNAME")
+password = os.getenv("DB_PASSWORD")
+driver = '{ODBC Driver 17 for SQL Server}'
+
+connection_string_master = f'DRIVER={driver};SERVER={server};DATABASE={database_master};UID={username};PWD={password};'
+connection_string_database = f'DRIVER={driver};SERVER={server};DATABASE={database};UID={username};PWD={password};'
+connection_string_database_copy = f'DRIVER={driver};SERVER={server};DATABASE={database_copy};UID={username};PWD={password};'
 
 # Storing the date and time format in ISO 8601 format with 'Z' suffix for UTC time
 ISO_Z = "%Y-%m-%dT%H:%M:%SZ"
@@ -112,7 +133,7 @@ class DataService:
     
     # -----------------------------USERS------------------------------------
     
-    def create_user(self, first_name, last_name, username, password_hash):
+    def create_user(self, first_name, last_name, username, password_hash, dob, weight):
         # The password's first char must be a letter and next 2-19 chars can be letters, digits, hyphen or underscore
         if not re.match("^[A-Za-z][A-Za-z0-9._-]{2,19}$", username.strip()):
             raise ValueError("Invalid username")
@@ -123,6 +144,15 @@ class DataService:
         if norm in idx:
             raise ValueError("Username already exists")
         
+        with pyodbc.connect(connection_string_database_copy) as conn:
+            cursor = conn.cursor()
+            sql_command = "{CALL add_Student (?, ?, ?, ?, ?, ?, ?)}"
+            output_param = 0
+            cursor.execute(sql_command, (first_name, last_name, username, password_hash, dob, weight, output_param))
+            conn.commit()
+            print(output_param)
+
+
         user_id = self._next_id("users")
         user = {
             "id": user_id,

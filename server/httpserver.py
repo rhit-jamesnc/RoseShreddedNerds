@@ -87,6 +87,8 @@ def register():
     last_name = (data.get("last_name") or "").strip()
     username = (data.get("username") or "").strip()
     password = data.get("password") or ""
+    dob = data.get("dob") or ""
+    weight = data.get("weight") or ""
 
     # If all of the fields aren't there then throw error message
     if not (first_name and last_name and username and password):
@@ -94,7 +96,7 @@ def register():
 
     # Create the user
     try:
-        user = ds.create_user(first_name=first_name, last_name=last_name, username=username, password_hash=generate_password_hash(password))
+        user = ds.create_user(first_name=first_name, last_name=last_name, username=username, password_hash=generate_password_hash(password), dob=dob, weight=weight)
     except ValueError as e:
         return jsonify({"error": str(e)}), 409
     
