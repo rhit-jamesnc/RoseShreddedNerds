@@ -1,0 +1,158 @@
+:root {
+    --rhit-red: #7a0019;
+    --rhit-light: #f8f8f8;
+    --border-light: #e7e7e7
+}
+
+/* This defines the main background of the page */
+html, body, #root {
+    height: 100%;
+    background-color: var(--rhit-light);
+}
+
+/* This is a Flex shell which I added so that the footer sticks to bottom even on pages with hardly any stuff */
+.app-shell {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* This part ensures that the content in main grows and the footer remains at the bottom of the page */
+.app-main {
+    flex: 1;
+}
+
+/* All this is styling for the Navbar */
+.navbar-shr {
+    background: #ffffff;
+    border-bottom: 1px solid var(--border-light);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.navbar-brand span {
+    color: var(--rhit-red);
+    font-weight: 800;
+    letter-spacing: 0.3px;
+}
+
+.navbar-link.active {
+    color: var(--rhit-red);
+    font-weight: 600;
+}
+
+.btn-outline-maroon:hover {
+    background: var(--rhit-red);
+    color: #fff;
+}
+
+/* All this styling is for the footer */
+.footer-bar {
+    background: var(--rhit-red);
+    color: #ffffff;
+    text-align: center;
+    padding: 10px 0;
+    margin-top: 40px;
+    font-size: 0.9rem;
+}
+.footer-bar a {
+    color: #ffdede;
+    text-decoration: underline;
+}
+
+/* Here I am adding any style/css related to the Home page */
+.home-page {
+    min-height: 60vh;
+}
+
+.home-page .highlight {
+    color: var(--rhit-red);
+}
+
+.home-card {
+    border-radius: 12px;
+    border: 1px solid var(--border-light);
+}
+
+.bg-maroon {
+    background-color: var(--rhit-red) !important;
+}
+
+.btn-maroon {
+    background: var(--rhit-red);
+    color: #ffffff;
+    border: 1px solid var(--rhit-red);
+}
+
+.btn-maroon:hover {
+    background-color: #5e0013;
+    color: #ffffff;
+}
+.btn-outline-maroon {
+    color: var(--rhit-red);
+    border-color: var(--rhit-red);
+}
+.btn-outline-maroon:hover {
+    background: var(--rhit-red);
+    color: #ffffff;
+}
+
+/* Here I am adding CSS for the Authentication pages which include register and login page */
+.auth-page {
+    min-height: 60vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.auth-card {
+    width: 100%;
+    max-width: 480px;
+    border-radius: 12px;
+    border: 1px solid var(--border-light);
+}
+
+/* Here I have included all css related to the Dashboard page of my application */
+
+.dashboard-page {
+    min-height: 60vh;
+}
+
+.dashboard-card {
+    border-radius: 10px;
+    border: 1px solid var(--border-light);
+}
+
+/* Here I have included all css related to the Leaderboards page of my application */
+ .leaderboards-page {
+    min-height: 60vh;
+ }
+
+ .leader-card {
+    border-radius: 10px;
+    -webkit-border-radius: 10px;
+    -moz-border-radius: 10px;
+    -ms-border-radius: 10px;
+    -o-border-radius: 10px;
+    border: 1px solid var(--rhit-red);
+}
+
+.leader-me-row {
+    background-color: rgb(128, 0, 0);
+}
+
+/* Here I am adding all CSS associated to the friends page */
+
+.schedule-page {
+  min-height: 60vh;
+}
+
+.schedule-card {
+  border-radius: 12px;
+  border: 1px solid var(--border-light);
+}
+
+.schedule-slot-row {
+  border-bottom: 1px dashed var(--border-light);
+  padding-bottom: 0.35rem;
+  margin-bottom: 0.35rem;
+}
