@@ -21,6 +21,8 @@ export default function Workouts() {
   const [info, setInfo] = useState("");
   const [prs, setPrs] = useState([]);
 
+  const [validated, setValidated] = useState(false);
+
   // Here I am loading the set of exercises which are registered, and if none are registered then I am just passing an empty list
   useEffect(() => {
     api("/exercises")
@@ -99,14 +101,40 @@ export default function Workouts() {
     return true;
   }, [date, duration, rows]);
 
+  function getValidationError() {
+    if (!date) return "Please select a workout date.";
+    const selectedDate = new Date(date);
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    if (selectedDate > today) return "Workout date cannot be in the future.";
+    if (Number.isNaN(+duration) || +duration <= 0) return "Duration must be a positive number of minutes.";
+    if (+duration > 600) return "Duration cannot exceed 600 minutes (10 hours).";
+    if (rows.length === 0) return "Add at least one exercise to your workout.";
+
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      const label = `Exercise row ${i + 1}`;
+      if (!r.exercise_id) return `${label}: Please select an exercise.`;
+      if (!r.reps || +r.reps < 1) return `${label}: Reps must be at least 1.`;
+      if (+r.reps > 100) return `${label}: Reps cannot exceed 100 per set.`;
+      if (!r.sets || +r.sets < 1) return `${label}: Sets must be at least 1.`;
+      if (+r.sets > 50) return `${label}: Sets cannot exceed 50.`;
+      if (r.weight_kg === "" || +r.weight_kg < 0) return `${label}: Weight must be 0 or more.`;
+      if (+r.weight_kg > 1000) return `${label}: Weight cannot exceed 1000 kg.`;
+    }
+    return "";
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError("");
     setInfo("");
     setPrs([]);
+    setValidated(true);
 
-    if (!canSubmit) {
-      setError("One or more of the workout fields is filled incorrectly.");
+    const validationMsg = getValidationError();
+    if (validationMsg) {
+      setError(validationMsg);
       return;
     }
 
@@ -170,13 +198,31 @@ export default function Workouts() {
                   <Col md={6}>
                     <Form.Group controlId="workoutDate" className="mb-3 mb-md-0">
                       <Form.Label>Date</Form.Label>
-                      <Form.Control type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+                      <Form.Control
+                        type="date"
+                        value={date}
+                        onChange={(e) => setDate(e.target.value)}
+                        isInvalid={validated && !date}
+                      />
+                      <Form.Control.Feedback type="invalid">
+                        Please select a date.
+                      </Form.Control.Feedback>
                     </Form.Group>
                   </Col>
                   <Col md={6}>
                     <Form.Group controlId="durationMinutes">
                       <Form.Label>Duration (minutes)</Form.Label>
-                      <Form.Control type="number" min={1} value={duration} onChange={(e) => setDuration(e.target.value)} />
+                      <Form.Control
+                        type="number"
+                        min={1}
+                        max={600}
+                        value={duration}
+                        onChange={(e) => setDuration(e.target.value)}
+                        isInvalid={validated && (Number.isNaN(+duration) || +duration <= 0 || +duration > 600)}
+                      />
+                      <Form.Control.Feedback type="invalid">
+                        Duration must be between 1 and 600 minutes.
+                      </Form.Control.Feedback>
                     </Form.Group>
                   </Col>
                 </Row>
@@ -204,7 +250,11 @@ export default function Workouts() {
                         return (
                           <tr key={idx}>
                             <td>
-                              <Form.Select value={r.exercise_id} onChange={(e) => setRow(idx, { exercise_id: e.target.value })} >
+                              <Form.Select
+                                value={r.exercise_id}
+                                onChange={(e) => setRow(idx, { exercise_id: e.target.value })}
+                                isInvalid={validated && !r.exercise_id}
+                              >
                                 <option value="">Select...</option>
                                 {exercises.map((ex) => (
                                   <option key={ex.id} value={ex.id}>{ex.name}</option>
@@ -212,13 +262,35 @@ export default function Workouts() {
                               </Form.Select>
                             </td>
                             <td>
-                              <Form.Control type="number" min={0} step="0.5" value={r.weight_kg} onChange={(e) => setRow(idx, { weight_kg: e.target.value })} />
+                              <Form.Control
+                                type="number"
+                                min={0}
+                                max={1000}
+                                step="0.5"
+                                value={r.weight_kg}
+                                onChange={(e) => setRow(idx, { weight_kg: e.target.value })}
+                                isInvalid={validated && (r.weight_kg === "" || +r.weight_kg < 0 || +r.weight_kg > 1000)}
+                              />
                             </td>
                             <td>
-                              <Form.Control type="number" min={1} value={r.reps} onChange={(e) => setRow(idx, { reps: e.target.value })} />
+                              <Form.Control
+                                type="number"
+                                min={1}
+                                max={100}
+                                value={r.reps}
+                                onChange={(e) => setRow(idx, { reps: e.target.value })}
+                                isInvalid={validated && (!r.reps || +r.reps < 1 || +r.reps > 100)}
+                              />
                             </td>
-                                                        <td>
-                              <Form.Control type="number" min={1} value={r.sets} onChange={(e) => setRow(idx, { sets: e.target.value })} />
+                            <td>
+                              <Form.Control
+                                type="number"
+                                min={1}
+                                max={50}
+                                value={r.sets}
+                                onChange={(e) => setRow(idx, { sets: e.target.value })}
+                                isInvalid={validated && (!r.sets || +r.sets < 1 || +r.sets > 50)}
+                              />
                             </td>
                             <td>
                               <span className="small text-mutated">

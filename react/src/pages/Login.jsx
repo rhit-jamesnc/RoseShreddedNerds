@@ -6,7 +6,7 @@ import { api } from "../api";
 
 export default function Login() {
 
-  const navigate = useNavigate
+  const navigate = useNavigate();
 
   // These are the form fields
   const [username, setUsername] = useState("");
@@ -17,15 +17,18 @@ export default function Login() {
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
 
+  const [validated, setValidated] = useState(false);
+
   // The side effect function
   // Just like most of the pages, this too just makes api call to fetch the actual data and fields sitself
   async function handleSubmit(e) {
     e.preventDefault();
     setError("");
     setInfo("");
+    setValidated(true);
 
     if(!username.trim() || !password.trim()) {
-      setError("Please enter both the username and password.");
+      setError("Please fill in all required fields.");
       return;
     }
 
@@ -75,12 +78,30 @@ export default function Login() {
 
             <Form.Group className="mb-3" controlId="username">
               <Form.Label>Username</Form.Label>
-              <Form.Control type="text" placeholder="johnsnow" value={username} onChange={(e) => setUsername(e.target.value)} />
+              <Form.Control
+                type="text"
+                placeholder="johnsnow"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                isInvalid={validated && !username.trim()}
+              />
+              <Form.Control.Feedback type="invalid">
+                Username is required.
+              </Form.Control.Feedback>
             </Form.Group>
 
             <Form.Group className="mb-3" controlId="password">
               <Form.Label>Password</Form.Label>
-              <Form.Control type="password" placeholder="j0hn-sn0w123" value={password} onChange={(e) => setPassword(e.target.value)} />
+              <Form.Control
+                type="password"
+                placeholder="j0hn-sn0w123"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                isInvalid={validated && !password.trim()}
+              />
+              <Form.Control.Feedback type="invalid">
+                Password is required.
+              </Form.Control.Feedback>
             </Form.Group>
 
 
