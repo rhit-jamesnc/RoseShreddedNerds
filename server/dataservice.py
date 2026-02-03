@@ -543,25 +543,46 @@ class DataService:
         self.db.set("friends", friendship_map)
         self.dump()
         return rec
-
-
-
-        
-        
-
-
-
-        
-
-        
-
-        
-
-
-
-
     
 
-
-
+    #Create a trainer
+    def create_trainer(self, first_name, last_name, username, password_hash):
+        norm = self._username_normalization(username)
+        idx = self.db.get("index_users_username_normalization")
+        if norm in idx:
+            raise ValueError("Username already exists")
         
+        # Hardcoded connection string for testing local connectivity
+        test_conn = f'DRIVER={{ODBC Driver 17 for SQL Server}};SERVER=.;DATABASE=RoseShreddedNerdsCopy;Trusted_Connection=yes;'
+        
+        with pyodbc.connect(test_conn) as conn:
+            cursor = conn.cursor()
+            sql_person = "INSERT INTO [Person] (FName, LName, Username, PasswordHash) VALUES (?, ?, ?, ?)"
+            cursor.execute(sql_person, (first_name, last_name, username, password_hash))
+            
+            cursor.execute("SELECT SCOPE_IDENTITY()")
+            person_id = int(cursor.fetchone()[0])
+            
+            sql_trainer = "INSERT INTO [Trainer] (ID) VALUES (?)"
+            cursor.execute(sql_trainer, (person_id,))
+            conn.commit()
+
+        user_id = self._next_id("users")
+        user = {
+            "id": user_id,
+            "sql_id": person_id,
+            "username": username.strip(),
+            "first_name": first_name.strip(),
+            "last_name": last_name.strip(),
+            "role": "trainer",
+            "password_hash": password_hash,
+            "created_at": now_iso()
+        }
+        
+        users = self.db.get("users")
+        users[str(user_id)] = user
+        self.db.set("users", users)
+        idx[norm] = user_id
+        self.db.set("index_users_username_normalization", idx)
+        self.dump()
+        return user

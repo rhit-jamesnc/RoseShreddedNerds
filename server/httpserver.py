@@ -244,6 +244,36 @@ def create_schedule_slot():
 
     return jsonify({"slot": slot}), 201
 
+# ----------------------------------- Trainer ---------------------------------------------
+@app.post("/api/auth/register-trainer")
+def register_trainer():
+    error = require_json()
+    if error:
+        return error
+    
+    data = request.get_json() or {}
+    first_name = (data.get("first_name") or "").strip()
+    last_name = (data.get("last_name") or "").strip()
+    username = (data.get("username") or "").strip()
+    password = data.get("password") or ""
+
+    if not (first_name and last_name and username and password):
+        return jsonify({"error": "Missing fields"}), 400
+
+    try:
+        user = ds.create_trainer(
+            first_name=first_name, 
+            last_name=last_name, 
+            username=username, 
+            password_hash=generate_password_hash(password)
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 409
+    
+    session["user_id"] = user["id"]
+    session.permanent = True
+    return jsonify({"user": user}), 201
+
 # ----------------------------------- Health ---------------------------------------------
 @app.get("/api/health")
 def health():
