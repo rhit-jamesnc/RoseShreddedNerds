@@ -545,17 +545,13 @@ class DataService:
         return rec
     
 
-    #Create a trainer
     def create_trainer(self, first_name, last_name, username, password_hash):
         norm = self._username_normalization(username)
         idx = self.db.get("index_users_username_normalization")
         if norm in idx:
             raise ValueError("Username already exists")
         
-        # Hardcoded connection string for testing local connectivity
-        test_conn = f'DRIVER={{ODBC Driver 17 for SQL Server}};SERVER=.;DATABASE=RoseShreddedNerdsCopy;Trusted_Connection=yes;'
-        
-        with pyodbc.connect(test_conn) as conn:
+        with pyodbc.connect(connection_string_database_copy) as conn:
             cursor = conn.cursor()
             sql_person = "INSERT INTO [Person] (FName, LName, Username, PasswordHash) VALUES (?, ?, ?, ?)"
             cursor.execute(sql_person, (first_name, last_name, username, password_hash))
@@ -586,3 +582,37 @@ class DataService:
         self.db.set("index_users_username_normalization", idx)
         self.dump()
         return user
+    
+    def create_class(self, name, trainer_id):
+        with pyodbc.connect(connection_string_database_copy) as conn:
+            cursor = conn.cursor()
+            sql_class = "INSERT INTO [Class] (Name) VALUES (?)"
+            cursor.execute(sql_class, (name,))
+            
+            cursor.execute("SELECT SCOPE_IDENTITY()")
+            class_id = int(cursor.fetchone()[0])
+            
+            sql_teaches = "INSERT INTO [Teaches] (TrainerID, ClassID) VALUES (?, ?)"
+            cursor.execute(sql_teaches, (trainer_id, class_id))
+            conn.commit()
+            
+        return {"id": class_id, "name": name, "trainer_id": trainer_id}
+
+    def get_classes(self):
+        classes = []
+        with pyodbc.connect(connection_string_database_copy) as conn:
+            cursor = conn.cursor()
+            query = """
+                SELECT c.ID, c.Name, p.FName, p.LName 
+                FROM [Class] c
+                JOIN [Teaches] t ON c.ID = t.ClassID
+                JOIN [Person] p ON t.TrainerID = p.ID
+            """
+            cursor.execute(query)
+            for row in cursor.fetchall():
+                classes.append({
+                    "id": row[0],
+                    "name": row[1],
+                    "trainer_name": f"{row[2]} {row[3]}"
+                })
+        return classes

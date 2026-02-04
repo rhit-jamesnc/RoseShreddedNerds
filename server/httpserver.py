@@ -274,6 +274,26 @@ def register_trainer():
     session.permanent = True
     return jsonify({"user": user}), 201
 
+@app.route('/api/classes', methods=['GET'])
+def get_all_classes():
+    try:
+        classes = ds.get_classes()
+        return jsonify(classes), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/classes/create', methods=['POST'])
+def register_class():
+    data = request.json
+    try:
+        new_class = ds.create_class(
+            name=data.get('name'),
+            trainer_id=data.get('trainer_id')
+        )
+        return jsonify(new_class), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # ----------------------------------- Health ---------------------------------------------
 @app.get("/api/health")
 def health():

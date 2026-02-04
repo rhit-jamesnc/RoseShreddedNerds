@@ -173,4 +173,4 @@ def create_stored_procedures(connection_string):
 #create_db(connection_string_master)
 #create_tables(connection_string_database_copy)
 #create_stored_procedures(connection_string_database_copy)
-#destroy_db(connection_string_master)
+destroy_db(connection_string_master)
