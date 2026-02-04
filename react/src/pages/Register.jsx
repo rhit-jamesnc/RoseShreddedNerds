@@ -17,6 +17,7 @@ export default function Register() {
   const [password, setPassword] = useState("");
   const [dob, setDob] = useState("");
   const [weight, setWeight] = useState("");
+  const [role, setRole] = useState("student");
 
   // These are variables which store the UI state
   const [submitting, setSubmitting] = useState(false);
@@ -64,6 +65,7 @@ export default function Register() {
         last_name: lastName.trim(),
         username: username.trim(),
         password: password,
+        role: role,
       };
 
       if (dob) payload.dob = dob;
@@ -104,7 +106,32 @@ export default function Register() {
 
           <Form onSubmit={handleSubmit} autoComplete="off">
 
-          
+            <Form.Group className="mb-4">
+              <Form.Label className="d-block">I am a...</Form.Label>
+              <div className="d-flex gap-4">
+                <Form.Check
+                  type="radio"
+                  label="Student"
+                  name="roleGroup"
+                  id="roleStudent"
+                  checked={role === "student"}
+                  onChange={() => setRole("student")}
+                />
+                <Form.Check
+                  type="radio"
+                  label="Trainer"
+                  name="roleGroup"
+                  id="roleTrainer"
+                  checked={role === "trainer"}
+                  onChange={() => setRole("trainer")}
+                />
+              </div>
+              <Form.Text className="text-muted">
+                {role === "trainer" 
+                  ? "Trainers can create classes and manage schedules." 
+                  : "Students can log workouts and join trainer-led classes."}
+              </Form.Text>
+            </Form.Group>
             <Row>
               <Col xs={12} md={6}>
                 <Form.Group className="mb-3" controlId="firstName">

@@ -83,6 +83,7 @@ def register():
     
     # Here I am simply retrieving the form data from the post requester to this path
     data = request.get_json() or {}
+    role = data.get("role", "student")
     first_name = (data.get("first_name") or "").strip()
     last_name = (data.get("last_name") or "").strip()
     username = (data.get("username") or "").strip()
@@ -96,16 +97,31 @@ def register():
 
     # Create the user
     try:
-        user = ds.create_user(first_name=first_name, last_name=last_name, username=username, password_hash=generate_password_hash(password), dob=dob, weight=weight)
+        password_hash = generate_password_hash(password)
+
+        if role == "trainer":
+            user = ds.create_trainer(
+                first_name=first_name,
+                last_name=last_name,
+                username=username,
+                password_hash=password_hash,
+                weight=weight
+            )
+        else:
+            user = ds.create_user(
+                first_name=first_name,
+                last_name=last_name,
+                username=username,
+                password_hash=password_hash,
+                dob=dob,
+                weight=weight
+            )
+        session["user_id"] = user["id"]
+        session.permanent = True
+
+        return jsonify({"user": user}), 201
     except ValueError as e:
         return jsonify({"error": str(e)}), 409
-    
-    # Start session
-    session["user_id"] = user["id"]
-    session.permanent = True
-    ds.update_user(user_id=user["id"], last_login_at=dataservice.now_iso())
-
-    return jsonify({"user": user}), 201
 
 @app.post("/api/auth/login")
 def login():
@@ -244,37 +260,10 @@ def create_schedule_slot():
 
     return jsonify({"slot": slot}), 201
 
-# ----------------------------------- Trainer ---------------------------------------------
-@app.post("/api/auth/register-trainer")
-def register_trainer():
-    error = require_json()
-    if error:
-        return error
-    
-    data = request.get_json() or {}
-    first_name = (data.get("first_name") or "").strip()
-    last_name = (data.get("last_name") or "").strip()
-    username = (data.get("username") or "").strip()
-    password = data.get("password") or ""
+# ----------------------------------- Classes ---------------------------------------------
 
-    if not (first_name and last_name and username and password):
-        return jsonify({"error": "Missing fields"}), 400
-
-    try:
-        user = ds.create_trainer(
-            first_name=first_name, 
-            last_name=last_name, 
-            username=username, 
-            password_hash=generate_password_hash(password)
-        )
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 409
-    
-    session["user_id"] = user["id"]
-    session.permanent = True
-    return jsonify({"user": user}), 201
-
-@app.route('/api/classes', methods=['GET'])
+@app.get('/api/classes')
+@login_required
 def get_all_classes():
     try:
         classes = ds.get_classes()
@@ -282,14 +271,27 @@ def get_all_classes():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/classes/create', methods=['POST'])
+@app.post('/api/classes/create')
+@login_required
 def register_class():
-    data = request.json
+    error = require_json()
+    if error:
+        return error
+        
+    data = request.get_json() or {}
+    name = (data.get("name") or "").strip()
+    
+    user = current_user()
+    trainer_sql_id = user.get("sql_id")
+    role = user.get("role")
+
+    if not name:
+        return jsonify({"error": "Missing class name"}), 400
+    if role != "trainer" or not trainer_sql_id:
+        return jsonify({"error": "Only registered trainers can create classes"}), 403
+
     try:
-        new_class = ds.create_class(
-            name=data.get('name'),
-            trainer_id=data.get('trainer_id')
-        )
+        new_class = ds.create_class(name=name, trainer_id=trainer_sql_id)
         return jsonify(new_class), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 500

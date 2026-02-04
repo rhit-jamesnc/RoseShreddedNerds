@@ -17,7 +17,7 @@ server = os.getenv("DB_SERVER")
 #database = os.getenv("DB_NAME")
 database_master = 'master'
 database = os.getenv("DB_NAME")
-database_copy = 'RoseShreddedNerdsCopy'
+database_copy = 'RoseShreddedNerdscopy'
 username = os.getenv("DB_USERNAME")
 password = os.getenv("DB_PASSWORD")
 driver = '{ODBC Driver 17 for SQL Server}'
@@ -545,7 +545,7 @@ class DataService:
         return rec
     
 
-    def create_trainer(self, first_name, last_name, username, password_hash):
+    def create_trainer(self, first_name, last_name, username, password_hash, weight=None):
         norm = self._username_normalization(username)
         idx = self.db.get("index_users_username_normalization")
         if norm in idx:
@@ -553,8 +553,8 @@ class DataService:
         
         with pyodbc.connect(connection_string_database_copy) as conn:
             cursor = conn.cursor()
-            sql_person = "INSERT INTO [Person] (FName, LName, Username, PasswordHash) VALUES (?, ?, ?, ?)"
-            cursor.execute(sql_person, (first_name, last_name, username, password_hash))
+            sql_person = "INSERT INTO [Person] (FName, LName, Username, PasswordHash, Weight) VALUES (?, ?, ?, ?, ?)"
+            cursor.execute(sql_person, (first_name, last_name, username, password_hash, weight))
             
             cursor.execute("SELECT SCOPE_IDENTITY()")
             person_id = int(cursor.fetchone()[0])
@@ -572,6 +572,7 @@ class DataService:
             "last_name": last_name.strip(),
             "role": "trainer",
             "password_hash": password_hash,
+            "weight": weight,
             "created_at": now_iso()
         }
         
