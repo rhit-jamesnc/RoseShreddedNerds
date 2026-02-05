@@ -227,7 +227,7 @@ def personal_records():
     user = current_user()
     sql_id = user.get("sql_id")
     if not sql_id:
-        return jsonify({"items": [], "no sql server link for this account"}), 200
+        return jsonify({"items": [], "message": "no sql server link for this account"}), 200
     items = ds.get_personal_records_sql(sql_id)
     return jsonify({"items": items})
 

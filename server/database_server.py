@@ -180,13 +180,13 @@ def create_stored_procedures(connection_string):
     with pyodbc.connect(connection_string) as conn:
         cursor = conn.cursor()
 #Stored procedure to add a new student
-        sql_command = """
+        add_student_sql = """
                           CREATE OR ALTER PROCEDURE add_Student
                             (
                                 @FName varchar(50),
                                 @LName varchar(50),
                                 @Username varchar(50),
-                                @PasswordHash varchar(50),
+                                @PasswordHash varchar(512),
                                 @DOB date,
                                 @Weight int,
                                 @GeneratedID int OUTPUT
@@ -205,15 +205,41 @@ def create_stored_procedures(connection_string):
 
                           SET @GeneratedID = SCOPE_IDENTITY();
 
+                          INSERT INTO [Student] (ID) VALUES (@GeneratedID);
+
                           END
                         """
-        cursor.execute(sql_command)
-        conn.commit()
+        cursor.execute(add_student_sql)
+
+        add_trainer_sql = """
+                          CREATE OR ALTER PROCEDURE add_Trainer
+                            (
+                                @FName varchar(50),
+                                @LName varchar(50),
+                                @Username varchar(50),
+                                @PasswordHash varchar(512),
+                                @Weight int,
+                                @GeneratedID int OUTPUT
+                            )
+                        AS
+                        BEGIN
+                            IF EXISTS (SELECT 1 FROM Person WHERE Username = @Username)
+                            BEGIN;
+                                THROW 51000, 'Username already exists.', 1;
+                            END
+
+                            INSERT INTO [Person] (FName, LName, Username, PasswordHash, [Weight])
+                            VALUES (@FName, @LName, @Username, @PasswordHash, @Weight);
+
+                            SET @GeneratedID = SCOPE_IDENTITY();
+
+                            INSERT INTO [Trainer] (ID) VALUES (@GeneratedID);
+                        END
+                        """
+        cursor.execute(add_trainer_sql)
 
 #stored proc personal record (uses Achieves and Of) and upsert here is to insert or update, learned from geeksforgeeks and w3schools
-    with pyodbc.connect(connection_string) as conn:
-        cursor = conn.cursor()
-        sql_command = """
+        upsert_pr_sql = """
             CREATE OR ALTER PROCEDURE upsert_PersonalRecord 
                 @StudentID    int,
                 @ExerciseName varchar(50),
@@ -257,13 +283,10 @@ def create_stored_procedures(connection_string):
                 END
             END
         """
-        cursor.execute(sql_command)
-        conn.commit()
+        cursor.execute(upsert_pr_sql)
 
 #stored proc to get all personal records for a student
-    with pyodbc.connect(connection_string) as conn:
-        cursor = conn.cursor()
-        sql_command = """
+        get_pr_sql = """
             CREATE OR ALTER PROCEDURE get_PersonalRecords
                 @StudentID int
             AS
@@ -283,13 +306,10 @@ def create_stored_procedures(connection_string):
                 ORDER BY e.Category, e.Name
             END
         """
-        cursor.execute(sql_command)
-        conn.commit()
+        cursor.execute(get_pr_sql)
 
 #stored proc for the big-3 leaderboard (squat, bench press, deadlift)
-    with pyodbc.connect(connection_string) as conn:
-        cursor = conn.cursor()
-        sql_command = """
+        leaderboard_sql = """
             CREATE OR ALTER PROCEDURE get_Big3Leaderboard
             AS
             BEGIN
@@ -309,7 +329,7 @@ def create_stored_procedures(connection_string):
                 ORDER BY Big3Total DESC
             END
         """
-        cursor.execute(sql_command)
+        cursor.execute(leaderboard_sql)
         conn.commit()
 
 

@@ -463,7 +463,6 @@ class DataService:
                                  result["best_weight_kg"], result["best_reps"])
                             )
                             conn.commit()
-                else:
             except Exception as e:
                 import traceback
                 traceback.print_exc()
