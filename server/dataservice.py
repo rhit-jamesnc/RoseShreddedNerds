@@ -650,9 +650,10 @@ class DataService:
         self.dump()
         return user
     
-    def create_class(self, name, trainer_id):
+    def create_class(self, name, trainer_id, session_id=None):
         with pyodbc.connect(connection_string_database_copy) as conn:
             cursor = conn.cursor()
+            
             sql_class = "INSERT INTO [Class] (Name) VALUES (?)"
             cursor.execute(sql_class, (name,))
             
@@ -661,9 +662,14 @@ class DataService:
             
             sql_teaches = "INSERT INTO [Teaches] (TrainerID, ClassID) VALUES (?, ?)"
             cursor.execute(sql_teaches, (trainer_id, class_id))
+
+            if session_id:
+                sql_session_link = "INSERT INTO [Done] (SectionID, ClassID) VALUES (?, ?)"
+                cursor.execute(sql_session_link, (session_id, class_id))
+
             conn.commit()
             
-        return {"id": class_id, "name": name, "trainer_id": trainer_id}
+        return {"id": class_id, "name": name, "trainer_id": trainer_id, "session_id": session_id}
 
     def get_classes(self):
         classes = []

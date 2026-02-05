@@ -7,6 +7,7 @@ export default function Dashboard() {
   const [me, setMe] = useState(null);
   const [workouts, setWorkouts] = useState([]);
   const [err, setErr] = useState("");
+  const [newClassName, setNewClassName] = useState("");
 
   // Here I am loading the current user and some of their recentmost workouts
   useEffect(() => {
@@ -101,6 +102,30 @@ export default function Dashboard() {
       weeklyDaysTrained: weeklyDates.size,
     };
   }, [workouts]);
+
+  const handleCreateClass = async () => {
+    if (!newClassName.trim()) {
+      alert("Please enter a class name.");
+      return;
+    }
+
+    try {
+      const response = await api("/classes/create", {
+        method: "POST",
+        body: JSON.stringify({ name: newClassName }),
+      });
+
+      if (response && !response.error) {
+        alert(`Class "${newClassName}" created successfully!`);
+        setNewClassName(""); // Clear the input
+      } else {
+        alert(response.error || "Failed to create class.");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("An error occurred while creating the class.");
+    }
+  };
   
   return (
     <div className="dashboard-page py-3">
@@ -196,6 +221,31 @@ export default function Dashboard() {
           </Card>
         </Col>
       </Row>
+
+      {me?.role === "trainer" && (
+        <Row className="mb-4">
+          <Col md={12}>
+            <Card className="border-primary shadow-sm">
+              <Card.Body>
+                <Card.Title className="text-primary">Trainer Controls</Card.Title>
+                <Card.Subtitle className="mb-3 text-muted">Create a new workout class for students</Card.Subtitle>
+                <div className="d-flex gap-2">
+                  <input
+                    type="text"
+                    className="form-control w-50"
+                    placeholder="Enter Class Name (e.g. Advanced Powerlifting)"
+                    value={newClassName}
+                    onChange={(e) => setNewClassName(e.target.value)}
+                  />
+                  <button className="btn btn-primary" onClick={handleCreateClass}>
+                    Create Class
+                  </button>
+                </div>
+              </Card.Body>
+            </Card>
+          </Col>
+        </Row>
+      )}
 
       {/* Recent mini list at bottom */}
       <Row>

@@ -303,8 +303,11 @@ def register_class():
         return jsonify({"error": "Only registered trainers can create classes"}), 403
 
     try:
-        new_class = ds.create_class(name=name, trainer_id=trainer_sql_id)
-        return jsonify(new_class), 201
+        new_class_id = ds.create_class_sql(trainer_sql_id, name)
+        if new_class_id:
+            return jsonify({"message": "Class created", "class_id": new_class_id}), 201
+        else:
+            return jsonify({"error": "Database insertion failed"}), 500
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
