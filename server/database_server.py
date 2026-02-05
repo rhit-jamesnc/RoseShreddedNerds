@@ -130,15 +130,56 @@ def create_tables(connection_string):
                                 SectionID int IDENTITY (1, 1) PRIMARY KEY NOT NULL,
                                 ClassID int REFERENCES Class(ID) NOT NULL
                             )
+
+                            -- used geeksforgeeks.org for the default date value syntax
+                            CREATE TABLE [PersonalRecord] (
+                                ID int IDENTITY (1, 1) PRIMARY KEY NOT NULL,
+                                Weight decimal(7, 2) NOT NULL,
+                                Reps int NULL,
+                                Duration int NULL,
+                                Date date NOT NULL DEFAULT CAST(GETUTCDATE() AS date)
+                            )
+                            CREATE TABLE [Achieves] (
+                                StudentID int REFERENCES Student(ID) NOT NULL,
+                                PersonalRecordID int REFERENCES PersonalRecord(ID) NOT NULL,
+                                PRIMARY KEY (StudentID, PersonalRecordID)
+                            )
+                            CREATE TABLE [Of] (
+                                PersonalRecordID int REFERENCES PersonalRecord(ID) NOT NULL,
+                                ExerciseID int REFERENCES Exercise(ID) NOT NULL,
+                                PRIMARY KEY (PersonalRecordID, ExerciseID)
+                            )
                         """
         cursor.execute(sql_command)
+        conn.commit()
+
+def seed_exercises(connection_string):
+    exercises = [
+        ('Squat', 'strength'),
+        ('Bench Press', 'strength'),
+        ('Deadlift', 'strength'),
+        ('Overhead Press', 'strength'),
+        ('Barbell Row', 'strength'),
+        ('Dumbell Curl', 'strength'),
+        ('Pull-ups', 'strength'),
+        ('Running', 'cardio'),
+        ('Cycling', 'cardio'),
+        ('Jogging', 'cardio'),
+    ]
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        for name, category in exercises:
+            cursor.execute(
+                "IF NOT EXISTS (SELECT 1 FROM [Exercise] WHERE Name = ?) "
+                "INSERT INTO [Exercise] (Name, Category) VALUES (?, ?)",
+                (name, name, category)
+            )
         conn.commit()
 
 def create_stored_procedures(connection_string):
     with pyodbc.connect(connection_string) as conn:
         cursor = conn.cursor()
-        # Note the ALTER DATABASE... SQL Line was found online from Google search Gemini AI results because no other source gave the answer clearly
-        # What it essentially does is closes any other existing connections to the database to get rid of error "cannot drop...bc currently in USE"
+#Stored procedure to add a new student
         sql_command = """
                           CREATE OR ALTER PROCEDURE add_Student
                             (
@@ -169,8 +210,111 @@ def create_stored_procedures(connection_string):
         cursor.execute(sql_command)
         conn.commit()
 
+#stored proc personal record (uses Achieves and Of) and upsert here is to insert or update, learned from geeksforgeeks and w3schools
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_command = """
+            CREATE OR ALTER PROCEDURE upsert_PersonalRecord 
+                @StudentID    int,
+                @ExerciseName varchar(50),
+                @BestWeight   decimal(7,2),
+                @BestReps     int
+            AS
+            BEGIN
+                DECLARE @ExerciseID int
+                SELECT @ExerciseID = ID FROM [Exercise] WHERE Name = @ExerciseName
+
+                IF @ExerciseID IS NULL
+                    RETURN
+
+                DECLARE @ExistingPRID int
+                SELECT @ExistingPRID = a.PersonalRecordID
+                FROM [Achieves] a
+                JOIN [Of] o ON a.PersonalRecordID = o.PersonalRecordID
+                WHERE a.StudentID = @StudentID AND o.ExerciseID = @ExerciseID
+
+                IF @ExistingPRID IS NOT NULL
+                BEGIN
+                    UPDATE [PersonalRecord]
+                    SET Weight = @BestWeight,
+                        Reps   = @BestReps,
+                        Date   = CAST(GETUTCDATE() AS date)
+                    WHERE ID = @ExistingPRID
+                END
+                ELSE
+                BEGIN
+                    INSERT INTO [PersonalRecord] (Weight, Reps, Date)
+                    VALUES (@BestWeight, @BestReps, CAST(GETUTCDATE() AS date))
+
+                    DECLARE @NewPRID int
+                    SET @NewPRID = SCOPE_IDENTITY()
+
+                    INSERT INTO [Achieves] (StudentID, PersonalRecordID)
+                    VALUES (@StudentID, @NewPRID)
+
+                    INSERT INTO [Of] (PersonalRecordID, ExerciseID)
+                    VALUES (@NewPRID, @ExerciseID)
+                END
+            END
+        """
+        cursor.execute(sql_command)
+        conn.commit()
+
+#stored proc to get all personal records for a student
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_command = """
+            CREATE OR ALTER PROCEDURE get_PersonalRecords
+                @StudentID int
+            AS
+            BEGIN
+                SELECT
+                    e.Name       AS ExerciseName,
+                    e.Category   AS ExerciseCategory,
+                    pr.Weight    AS BestWeight,
+                    pr.Reps      AS BestReps,
+                    pr.Weight * (1.0 + pr.Reps / 30.0) AS Best1RM,
+                    pr.Date      AS UpdatedAt
+                FROM [PersonalRecord] pr
+                JOIN [Achieves] a ON pr.ID = a.PersonalRecordID
+                JOIN [Of] o ON pr.ID = o.PersonalRecordID
+                JOIN [Exercise] e ON o.ExerciseID = e.ID
+                WHERE a.StudentID = @StudentID
+                ORDER BY e.Category, e.Name
+            END
+        """
+        cursor.execute(sql_command)
+        conn.commit()
+
+#stored proc for the big-3 leaderboard (squat, bench press, deadlift)
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_command = """
+            CREATE OR ALTER PROCEDURE get_Big3Leaderboard
+            AS
+            BEGIN
+                SELECT
+                    p.Username,
+                    p.FName,
+                    p.LName,
+                    SUM(pr.Weight * (1.0 + pr.Reps / 30.0)) AS Big3Total
+                FROM [PersonalRecord] pr
+                JOIN [Achieves] a ON pr.ID = a.PersonalRecordID
+                JOIN [Of] o ON pr.ID = o.PersonalRecordID
+                JOIN [Exercise] e ON o.ExerciseID = e.ID
+                JOIN [Student] s ON a.StudentID = s.ID
+                JOIN [Person] p ON s.ID = p.ID
+                WHERE e.Name IN ('Squat', 'Bench Press', 'Deadlift')
+                GROUP BY p.ID, p.Username, p.FName, p.LName
+                ORDER BY Big3Total DESC
+            END
+        """
+        cursor.execute(sql_command)
+        conn.commit()
+
 
 #create_db(connection_string_master)
 #create_tables(connection_string_database_copy)
+#seed_exercises(connection_string_database_copy)
 #create_stored_procedures(connection_string_database_copy)
 #destroy_db(connection_string_master)

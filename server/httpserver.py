@@ -217,7 +217,19 @@ def list_workouts_campus():
 # -----------------------------------Leaderboards------------------------------
 @app.get("/api/leaderboards/big3")
 def big3():
-    return jsonify({"items": ds.big3_leaderboard()})
+    return jsonify({"items": ds.big3_leaderboard_sql()})
+
+
+#pr's
+@app.get("/api/personal-records")
+@login_required
+def personal_records():
+    user = current_user()
+    sql_id = user.get("sql_id")
+    if not sql_id:
+        return jsonify({"items": [], "no sql server link for this account"}), 200
+    items = ds.get_personal_records_sql(sql_id)
+    return jsonify({"items": items})
 
 
 #-------------------------------------Schedule-----------------------------------

@@ -17,7 +17,7 @@ server = os.getenv("DB_SERVER")
 #database = os.getenv("DB_NAME")
 database_master = 'master'
 database = os.getenv("DB_NAME")
-database_copy = 'RoseShreddedNerdscopy'
+database_copy = os.getenv("DB_NAME_COPY", "RoseShreddedNerdscopy")
 username = os.getenv("DB_USERNAME")
 password = os.getenv("DB_PASSWORD")
 driver = '{ODBC Driver 17 for SQL Server}'
@@ -146,16 +146,26 @@ class DataService:
         
         with pyodbc.connect(connection_string_database_copy) as conn:
             cursor = conn.cursor()
-            sql_command = "{CALL add_Student (?, ?, ?, ?, ?, ?, ?)}"
-            output_param = 0
-            cursor.execute(sql_command, (first_name, last_name, username, password_hash, dob, weight, output_param))
-            conn.commit()
-            print(output_param)
 
+#insert into Person table and get generated id in one statement
+            sql_person = """
+                INSERT INTO [Person] (FName, LName, Username, PasswordHash, DOB, Weight)
+                VALUES (?, ?, ?, ?, ?, ?);
+                SELECT SCOPE_IDENTITY() AS NewID;
+            """
+            cursor.execute(sql_person, (first_name, last_name, username, password_hash, dob, weight))
+#skip the INSERT result to get the SELECT result
+            cursor.nextset()
+            person_id = int(cursor.fetchone()[0])
+
+#insert into student table
+            cursor.execute("INSERT INTO [Student] (ID) VALUES (?)", (person_id,))
+            conn.commit()
 
         user_id = self._next_id("users")
         user = {
             "id": user_id,
+            "sql_id": person_id,
             "first_name": first_name.strip(),
             "last_name": last_name.strip(),
             "username": username.strip(),
@@ -217,10 +227,12 @@ class DataService:
             "username": user["username"],
             "first_name": user["first_name"],
             "last_name": user["last_name"],
-            "is_public": user["is_public"],
-            "unit_pref": user["unit_pref"],
-            "created_at": user["created_at"],
-            "last_login_at": user["last_login_at"]
+            "is_public": user.get("is_public", True),
+            "unit_pref": user.get("unit_pref", "kg"),
+            "role": user.get("role", "student"),
+            "sql_id": user.get("sql_id"),
+            "created_at": user.get("created_at"),
+            "last_login_at": user.get("last_login_at")
         }
     
 
@@ -396,14 +408,15 @@ class DataService:
         # Updating the one_rm figure and fetching the PRs which currently exist
         one_rm = epley_1rm(weight_kg, reps)
         prs_map = self.db.get("personal_records")
-        
         # Here I am finding the specific id of the PR stored based on the match with user_id and exercise_id
         existing_id = None
         for pid, pr in prs_map.items():
             if pr["user_id"] == user_id and pr["exercise_id"] == exercise_id:
                 existing_id = pid
                 break
-        
+
+        result = None
+
         if existing_id:
             # If there does already exist a PR entry for the given exercise and user and if the new one_rm is grater than previous one, we are updating the new PR info
             pr = prs_map[existing_id]
@@ -415,8 +428,7 @@ class DataService:
                 prs_map[existing_id] = pr
                 self.db.set("personal_records", prs_map)
                 self.dump()
-                return pr
-            return None
+                result = pr
         else:
             # If no such existing PR entry is found, we are creating new PR entry
             new_id = self._next_id("personal_records")
@@ -432,7 +444,31 @@ class DataService:
             prs_map[str(new_id)] = rec
             self.db.set("personal_records", prs_map)
             self.dump()
-            return rec
+            result = rec
+
+#writing twice to the server so stored procedures can query PRs
+        if result is not None:
+            try:
+                user = self.get_user_by_id(user_id)
+                sql_student_id = user.get("sql_id") if user else None
+                if sql_student_id:
+                    exercise_map = self.db.get("exercises")
+                    exercise_name = exercise_map.get(str(exercise_id), {}).get("name")
+                    if exercise_name:
+                        with pyodbc.connect(connection_string_database_copy) as conn:
+                            cursor = conn.cursor()
+                            cursor.execute(
+                                "{CALL upsert_PersonalRecord (?, ?, ?, ?)}",
+                                (sql_student_id, exercise_name,
+                                 result["best_weight_kg"], result["best_reps"])
+                            )
+                            conn.commit()
+                else:
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+
+        return result
     
     def big3_leaderboard(self):
 
@@ -475,7 +511,38 @@ class DataService:
         # Sorting the big 3 digital board entries with most wieght to least weight performances
         board.sort(key=lambda row: row["big3_total_kg"], reverse=True)
         return board
-    
+
+#sql server PR qnd leaderboard queries
+
+    def get_personal_records_sql(self, sql_student_id):
+        records = []
+        with pyodbc.connect(connection_string_database_copy) as conn:
+            cursor = conn.cursor()
+            cursor.execute("{CALL get_PersonalRecords (?)}", (sql_student_id,))
+            for row in cursor.fetchall():
+                records.append({
+                    "exercise_name": row[0],
+                    "category": row[1],
+                    "best_weight_kg": float(row[2]),
+                    "best_reps": row[3],
+                    "best_1rm_kg": float(row[4]),
+                    "updated_at": row[5].isoformat() if row[5] else None
+                })
+        return records
+
+    def big3_leaderboard_sql(self):
+        board = []
+        with pyodbc.connect(connection_string_database_copy) as conn:
+            cursor = conn.cursor()
+            cursor.execute("{CALL get_Big3Leaderboard}")
+            for row in cursor.fetchall():
+                board.append({
+                    "username": row[0],
+                    "display_name": f"{row[1]} {row[2][0]}.",
+                    "big3_total_kg": round(float(row[3]), 2)
+                })
+        return board
+
     def list_all_workouts(self):
         #Return all workouts across all users, newest first.
         workouts = list(self.db.get("workouts").values())

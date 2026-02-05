@@ -44,6 +44,7 @@ export default function AppNav() {
                     <Nav className="me-auto">
                         <Nav.Link as={NavLink} to="/dashboard">Dashboard</Nav.Link>
                         <Nav.Link as={NavLink} to="/leaderboards">Leaderboards</Nav.Link>
+                        <Nav.Link as={NavLink} to="/personal-records">My PRs</Nav.Link>
                         <Nav.Link as={NavLink} to="/schedule">Schedule</Nav.Link>
                         <Nav.Link as={NavLink} to="/workouts">Log Workouts</Nav.Link>
                     </Nav>
