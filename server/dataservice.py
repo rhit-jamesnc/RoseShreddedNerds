@@ -651,8 +651,8 @@ class DataService:
         self.dump()
         return user
     
-    def create_class(self, name, trainer_id, session_id=None):
-        with pyodbc.connect(connection_string_database_copy) as conn:
+    def create_class(self, trainer_id, name):
+        with pyodbc.connect(self.connection_string) as conn:
             cursor = conn.cursor()
             
             sql_class = "INSERT INTO [Class] (Name) VALUES (?)"
@@ -664,13 +664,17 @@ class DataService:
             sql_teaches = "INSERT INTO [Teaches] (TrainerID, ClassID) VALUES (?, ?)"
             cursor.execute(sql_teaches, (trainer_id, class_id))
 
-            if session_id:
-                sql_session_link = "INSERT INTO [Done] (SectionID, ClassID) VALUES (?, ?)"
-                cursor.execute(sql_session_link, (session_id, class_id))
+            sql_session = "INSERT INTO [Done] (SectionID, ClassID) VALUES (?, ?)"
+            cursor.execute(sql_session, (class_id, class_id))
 
             conn.commit()
             
-        return {"id": class_id, "name": name, "trainer_id": trainer_id, "session_id": session_id}
+        return {
+            "class_id": class_id, 
+            "session_id": class_id, 
+            "name": name, 
+            "trainer_id": trainer_id
+        }
 
     def get_classes(self):
         classes = []
@@ -704,4 +708,21 @@ class DataService:
             cursor.execute(insert_sql, (student_sql_id, class_id))
             conn.commit()
             
+            return {"success": True}
+        
+    def delete_class(self, trainer_id, class_id):
+        with pyodbc.connect(self.connection_string) as conn:
+            cursor = conn.cursor()
+            
+            check_sql = "SELECT 1 FROM [Teaches] WHERE TrainerID = ? AND ClassID = ?"
+            cursor.execute(check_sql, (trainer_id, class_id))
+            if not cursor.fetchone():
+                return {"error": "Unauthorized: You do not own this class"}
+
+            cursor.execute("DELETE FROM [HasA] WHERE ClassID = ?", (class_id,))
+            cursor.execute("DELETE FROM [Done] WHERE ClassID = ?", (class_id,))
+            cursor.execute("DELETE FROM [Teaches] WHERE ClassID = ?", (class_id,))
+            cursor.execute("DELETE FROM [Class] WHERE ClassID = ?", (class_id,))
+            
+            conn.commit()
             return {"success": True}

@@ -303,33 +303,46 @@ def register_class():
         return jsonify({"error": "Only registered trainers can create classes"}), 403
 
     try:
-        new_class_id = ds.create_class_sql(trainer_sql_id, name)
-        if new_class_id:
-            return jsonify({"message": "Class created", "class_id": new_class_id}), 201
-        else:
-            return jsonify({"error": "Database insertion failed"}), 500
+        result = ds.create_class(trainer_sql_id, name)
+        return jsonify(result), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     
-@app.route("/api/classes/<int:class_id>/enroll", methods=["POST"])
-def enroll_student(class_id):
-    user = session.get("user")
-    if not user:
-        return jsonify({"error": "Unauthorized"}), 401
+@app.route("/api/classes/<int:class_id>", methods=["DELETE"])
+@login_required
+def delete_class(class_id):
+    user = current_user()
+    trainer_sql_id = user.get("sql_id")
+    
+    if user.get("role") != "trainer" or not trainer_sql_id:
+        return jsonify({"error": "Only trainers can delete classes"}), 403
+
+    try:
+        result = ds.delete_class(trainer_sql_id, class_id)
+        if "error" in result:
+            return jsonify(result), 403
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
+@app.post("/api/classes/<int:class_id>/enroll")
+@login_required
+def enroll_in_class(class_id):
+    user = current_user()
     
     if user.get("role") != "student":
         return jsonify({"error": "Only students can enroll in classes"}), 403
 
     student_sql_id = user.get("sql_id")
     if not student_sql_id:
-        return jsonify({"error": "Student record not found"}), 404
+        return jsonify({"error": "Student record not found in SQL database"}), 404
 
     result = ds.enroll_student(student_sql_id, class_id)
     
     if "error" in result:
         return jsonify(result), 400
         
-    return jsonify(result)
+    return jsonify(result), 200
 
 # ----------------------------------- Health ---------------------------------------------
 @app.get("/api/health")

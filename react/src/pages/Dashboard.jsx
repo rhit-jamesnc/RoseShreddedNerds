@@ -8,6 +8,7 @@ export default function Dashboard() {
   const [workouts, setWorkouts] = useState([]);
   const [err, setErr] = useState("");
   const [newClassName, setNewClassName] = useState("");
+  const [myClasses, setMyClasses] = useState([]);
 
   // Here I am loading the current user and some of their recentmost workouts
   useEffect(() => {
@@ -39,6 +40,16 @@ export default function Dashboard() {
         setWorkouts([]);
       });
   }, []);
+
+  useEffect(() => {
+  if (me?.role === "trainer") {
+    api("/trainer/classes").then(resp => {
+      if (resp?.items) setMyClasses(resp.items);
+    });
+  }
+}, [me]);
+
+
   // These are helper functions that I created for calculating dashboard based statistics
   function parseDate(d) {
     if (!d) return null;
@@ -117,6 +128,7 @@ export default function Dashboard() {
 
       if (response && !response.error) {
         alert(`Class "${newClassName}" created successfully!`);
+        setMyClasses([...myClasses, { id: response.class_id, name: newClassName }]);
         setNewClassName(""); // Clear the input
       } else {
         alert(response.error || "Failed to create class.");
@@ -124,6 +136,28 @@ export default function Dashboard() {
     } catch (e) {
       console.error(e);
       alert("An error occurred while creating the class.");
+    }
+  };
+
+  const handleDeleteClass = async (classId) => {
+    if (!window.confirm("Are you sure you want to delete this class? This will also remove all student enrollments.")) {
+      return;
+    }
+
+    try {
+      const response = await api(`/classes/${classId}`, {
+        method: "DELETE",
+      });
+
+      if (response && response.success) {
+        alert("Class deleted successfully.");
+        setMyClasses(myClasses.filter(c => c.id !== classId));
+      } else {
+        alert(response.error || "Failed to delete class.");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("An error occurred.");
     }
   };
   
@@ -241,6 +275,24 @@ export default function Dashboard() {
                     Create Class
                   </button>
                 </div>
+              </Card.Body>
+            </Card>
+            <Card className="mt-3 shadow-sm">
+              <Card.Body>
+                <Card.Title>Your Active Classes</Card.Title>
+                <ul className="list-group list-group-flush">
+                  {myClasses.map(c => (
+                    <li key={c.id} className="list-group-item d-flex justify-content-between align-items-center">
+                      {c.name} (Session #{c.id})
+                      <button 
+                        className="btn btn-outline-danger btn-sm"
+                        onClick={() => handleDeleteClass(c.id)}
+                      >
+                        Delete
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               </Card.Body>
             </Card>
           </Col>
