@@ -310,6 +310,26 @@ def register_class():
             return jsonify({"error": "Database insertion failed"}), 500
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
+@app.route("/api/classes/<int:class_id>/enroll", methods=["POST"])
+def enroll_student(class_id):
+    user = session.get("user")
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    if user.get("role") != "student":
+        return jsonify({"error": "Only students can enroll in classes"}), 403
+
+    student_sql_id = user.get("sql_id")
+    if not student_sql_id:
+        return jsonify({"error": "Student record not found"}), 404
+
+    result = ds.enroll_student(student_sql_id, class_id)
+    
+    if "error" in result:
+        return jsonify(result), 400
+        
+    return jsonify(result)
 
 # ----------------------------------- Health ---------------------------------------------
 @app.get("/api/health")

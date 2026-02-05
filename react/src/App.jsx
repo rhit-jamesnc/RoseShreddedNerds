@@ -11,6 +11,7 @@ import About from "./pages/About.jsx";
 import Login from "./pages/Login.jsx";
 import Register from "./pages/Register.jsx";
 import PersonalRecords from "./pages/PersonalRecords.jsx";
+import ClassList from "./pages/ClassList.jsx";
 
 // Simple function to render a basic 404 not found page
 function NotFound() {
@@ -35,6 +36,7 @@ export default function App() {
 
           {/* These are the most important routes which match my navbar links */}
           <Route path="dashboard" element={<Dashboard />} />
+          <Route path="classes" element={<ClassList />} />
           <Route path="leaderboards" element={<Leaderboards />} />
           <Route path="personal-records" element={<PersonalRecords />} />
           <Route path="schedule" element={<Schedule />} />

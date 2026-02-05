@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from pickledb import PickleDB
 from datetime import datetime, timedelta, timezone, date
 
+
 load_dotenv()
 
 print(pyodbc.drivers())
@@ -689,3 +690,18 @@ class DataService:
                     "trainer_name": f"{row[2]} {row[3]}"
                 })
         return classes
+    
+    def enroll_student(self, student_sql_id, class_id):
+        with pyodbc.connect(connection_string_database_copy) as conn:
+            cursor = conn.cursor()
+            
+            check_sql = "SELECT 1 FROM [HasA] WHERE StudentID = ? AND ClassID = ?"
+            cursor.execute(check_sql, (student_sql_id, class_id))
+            if cursor.fetchone():
+                return {"error": "Already enrolled in this class"}
+
+            insert_sql = "INSERT INTO [HasA] (StudentID, ClassID) VALUES (?, ?)"
+            cursor.execute(insert_sql, (student_sql_id, class_id))
+            conn.commit()
+            
+            return {"success": True}
