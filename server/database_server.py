@@ -263,6 +263,66 @@ def create_stored_procedures(connection_string):
                                 """
         cursor.execute(update_person_profile)
 
+        # Stored procedure to add a workout or class session
+        add_session_sql = """
+                            CREATE OR ALTER PROCEDURE add_session
+                                (
+                                    @Date date = NULL,
+                                    @StudentID int,
+                                    @GeneratedID int OUTPUT
+                                )
+                            AS
+                            BEGIN
+                                IF @StudentID IS NULL OR (SELCT COUNT(*) FROM STUDENT WHERE ID = @StudentID) = 0
+                                BEGIN;
+                                    THROW 51002, 'Error: Student not found.', 1
+                                END
+                                IF @Date IS NULL SET @Date = CAST(GETDATE() AS DATE)
+
+                                INSERT INTO [Session] (Date, StudentID) VALUES (@Date, @StudentID)
+
+                                SET @GeneratedID = SCOPE_IDENTITY()
+                            END
+                          """
+        cursor.execute(add_session_sql)
+
+        # Stored procedure to add an exercise and log it for the session with information related to the exercise
+        add_exercise_and_related_info_sql = """
+                                            CREATE OR ALTER PROCEDURE add_exercise_and_info
+                                                (
+                                                    @Name varchar(50),
+                                                    @Category varchar(50),
+                                                    @Duration int = NULL,
+                                                    @SessionID int,
+                                                    @IsPr bit,
+                                                    @SetNumber int,
+                                                    @Weight decimal(5, 2),
+                                                    @Reps int,
+                                                    @GeneratedID int OUTPUT
+                                                )
+                                            AS
+                                            BEGIN
+                                                IF @Name IS NULL OR @Category IS NULL OR @SessionID IS NULL OR (SELECT COUNT(*) FROM Session WHERE ID = @SessionID) = 0
+                                                BEGIN;
+                                                    THROW '51001', 'Invalid parameters', 1
+                                                END
+
+                                                INSERT INTO [Exercise] (Name, Category, Duration)
+                                                VALUES (@Name, @Category, @Duration)
+
+                                                SET @GeneratedID = SCOPE_IDENTITY()
+
+                                                INSERT INTO [Logs] (ExerciseID, SessionID, IsPr)
+                                                VALUES (@GeneratedID, @SessionID, @IsPr)
+
+                                                INSERT INTO [Set] (ExericseID, SetNumber, Weight, Reps)
+                                                VALUES (@GeneratedID, @SetNumber, @Weight, @Reps)
+
+                                            END
+                                        """
+
+
+
         get_StudentEnrollments = """
             CREATE PROCEDURE get_StudentEnrollments
                 @StudentID INT
@@ -280,7 +340,7 @@ def create_stored_procedures(connection_string):
         cursor.execute(get_StudentEnrollments)
         conn.commit()
 
-#stored proc personal record (uses Achieves and Of) and upsert here is to insert or update, learned from geeksforgeeks and w3schools
+        #stored proc personal record (uses Achieves and Of) and upsert here is to insert or update, learned from geeksforgeeks and w3schools
         upsert_pr_sql = """
             CREATE OR ALTER PROCEDURE upsert_PersonalRecord 
                 @StudentID    int,
@@ -327,7 +387,7 @@ def create_stored_procedures(connection_string):
         """
         cursor.execute(upsert_pr_sql)
 
-#stored proc to get all personal records for a student
+        #stored proc to get all personal records for a student
         get_pr_sql = """
             CREATE OR ALTER PROCEDURE get_PersonalRecords
                 @StudentID int
@@ -350,7 +410,7 @@ def create_stored_procedures(connection_string):
         """
         cursor.execute(get_pr_sql)
 
-#stored proc for the big-3 leaderboard (squat, bench press, deadlift)
+        #stored proc for the big-3 leaderboard (squat, bench press, deadlift)
         leaderboard_sql = """
             CREATE OR ALTER PROCEDURE get_Big3Leaderboard
             AS
