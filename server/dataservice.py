@@ -134,7 +134,7 @@ class DataService:
     
     # -----------------------------USERS------------------------------------
     
-    def create_user(self, first_name, last_name, username, password_hash, dob, weight):
+    def create_user(self, first_name, last_name, username, password_hash, dob, weight, role):
         # The password's first char must be a letter and next 2-19 chars can be letters, digits, hyphen or underscore
         if not re.match("^[A-Za-z][A-Za-z0-9._-]{2,19}$", username.strip()):
             raise ValueError("Invalid username")
@@ -148,20 +148,22 @@ class DataService:
         with pyodbc.connect(connection_string_database_copy) as conn:
             cursor = conn.cursor()
 
-#insert into Person table and get generated id in one statement
-            sql_person = """
-                INSERT INTO [Person] (FName, LName, Username, PasswordHash, DOB, Weight)
-                VALUES (?, ?, ?, ?, ?, ?);
-                SELECT SCOPE_IDENTITY() AS NewID;
-            """
-            cursor.execute(sql_person, (first_name, last_name, username, password_hash, dob, weight))
+            #insert into Person table and get generated id in one statement
+            #sql_person = """
+                #INSERT INTO [Person] (FName, LName, Username, PasswordHash, DOB, Weight)
+                #VALUES (?, ?, ?, ?, ?, ?);
+                #SELECT SCOPE_IDENTITY() AS NewID;
+            #"""
+            #cursor.execute(sql_person, (first_name, last_name, username, password_hash, dob, weight))
 #skip the INSERT result to get the SELECT result
-            cursor.nextset()
-            person_id = int(cursor.fetchone()[0])
+            #cursor.nextset()
+            #person_id = int(cursor.fetchone()[0])
 
 #insert into student table
-            cursor.execute("INSERT INTO [Student] (ID) VALUES (?)", (person_id,))
-            conn.commit()
+            #cursor.execute("INSERT INTO [Student] (ID) VALUES (?)", (person_id,))
+            #conn.commit()
+            cursor.execute("{CALL add_person(?, ?, ?, ?, ?, ?, ?)}", first_name, last_name, username, password_hash, dob, weight, role)
+            person_id = int(cursor.fetchone()[0])
 
         user_id = self._next_id("users")
         user = {

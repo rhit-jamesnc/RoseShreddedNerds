@@ -100,12 +100,13 @@ def register():
         password_hash = generate_password_hash(password)
 
         if role == "trainer":
-            user = ds.create_trainer(
+            user = ds.create_user(
                 first_name=first_name,
                 last_name=last_name,
                 username=username,
                 password_hash=password_hash,
-                weight=weight
+                weight=weight,
+                role=role
             )
         else:
             user = ds.create_user(
@@ -114,7 +115,8 @@ def register():
                 username=username,
                 password_hash=password_hash,
                 dob=dob,
-                weight=weight
+                weight=weight,
+                role=role
             )
         session["user_id"] = user["id"]
         session.permanent = True
