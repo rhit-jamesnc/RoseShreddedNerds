@@ -14,7 +14,7 @@ server = os.getenv("DB_SERVER")
 #database = os.getenv("DB_NAME")
 database_master = 'master'
 database = os.getenv("DB_NAME")
-database_copy = 'RoseShreddedNerdscopy'
+database_copy = 'RoseShreddedNerdsCopy'
 username = os.getenv("DB_USERNAME")
 password = os.getenv("DB_PASSWORD")
 driver = '{ODBC Driver 17 for SQL Server}'
@@ -234,25 +234,24 @@ def create_stored_procedures(connection_string):
                                         @Username varchar(50) = NULL,
                                         @PasswordHash varchar(512) = NULL,
                                         @DOB date = NULL,
-                                        @Weight int = NULL,
+                                        @Weight int = NULL
                                     )
                                  AS
                                  BEGIN
-                                    IF @PersonID IS NULL OR (SELECT COUNT(*) FROM Person WHERE PersonID = @PersonID) = 0
+                                    IF @PersonID IS NULL OR (SELECT COUNT(*) FROM Person WHERE ID = @PersonID) = 0
                                     BEGIN;
                                         THROW 51000, 'Error: Missing Person', 1
                                     END
 
-                                    IF @FName IS NULL SET @FName = (SELECT FName FROM Person WHERE PersonID = @PersonID)
-                                    IF @LName IS NULL SET @LName = (SELECT LName FROM Person WHERE PersonID = @PersonID)
-                                    IF @Username IS NULL SET @Username = (SELECT Username FROM Person WHERE PersonID = @PersonID)
-                                    IF @PasswordHash IS NULL SET @PasswordHash = (SELECT PasswordHash FROM Person WHERE PersonID = @PersonID)
-                                    IF @DOB IS NULL SET @DOB = (SELECT DOB FROM Person WHERE PersonID = @PersonID)
-                                    IF @Weight IS NULL SET @Weight = (SELECT Weight FROM Person WHERE PersonID = @PersonID)
+                                    IF @FName IS NULL SET @FName = (SELECT FName FROM Person WHERE ID = @PersonID)
+                                    IF @LName IS NULL SET @LName = (SELECT LName FROM Person WHERE ID = @PersonID)
+                                    IF @Username IS NULL SET @Username = (SELECT Username FROM Person WHERE ID = @PersonID)
+                                    IF @PasswordHash IS NULL SET @PasswordHash = (SELECT PasswordHash FROM Person WHERE ID = @PersonID)
+                                    IF @DOB IS NULL SET @DOB = (SELECT DOB FROM Person WHERE ID = @PersonID)
+                                    IF @Weight IS NULL SET @Weight = (SELECT Weight FROM Person WHERE ID = @PersonID)
 
                                     UPDATE Person
-                                    SET PersonID = @PersonID,
-                                        FName = @FName,
+                                    SET FName = @FName,
                                         LName = @LName,
                                         Username = @Username,
                                         PasswordHash = @PasswordHash,
@@ -273,7 +272,7 @@ def create_stored_procedures(connection_string):
                                 )
                             AS
                             BEGIN
-                                IF @StudentID IS NULL OR (SELCT COUNT(*) FROM STUDENT WHERE ID = @StudentID) = 0
+                                IF @StudentID IS NULL OR (SELECT COUNT(*) FROM STUDENT WHERE ID = @StudentID) = 0
                                 BEGIN;
                                     THROW 51002, 'Error: Student not found.', 1
                                 END
@@ -435,8 +434,8 @@ def create_stored_procedures(connection_string):
         conn.commit()
 
 
-#create_db(connection_string_master)
-#create_tables(connection_string_database_copy)
-#seed_exercises(connection_string_database_copy)
-#create_stored_procedures(connection_string_database_copy)
-destroy_db(connection_string_master)
+create_db(connection_string_master)
+create_tables(connection_string_database_copy)
+seed_exercises(connection_string_database_copy)
+create_stored_procedures(connection_string_database_copy)
+#destroy_db(connection_string_master)
