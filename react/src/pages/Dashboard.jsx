@@ -9,6 +9,7 @@ export default function Dashboard() {
   const [err, setErr] = useState("");
   const [newClassName, setNewClassName] = useState("");
   const [myClasses, setMyClasses] = useState([]);
+  const [enrolledClasses, setEnrolledClasses] = useState([]);
 
   // Here I am loading the current user and some of their recentmost workouts
   useEffect(() => {
@@ -42,12 +43,27 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-  if (me?.role === "trainer") {
-    api("/trainer/classes").then(resp => {
-      if (resp?.items) setMyClasses(resp.items);
-    });
-  }
-}, [me]);
+    if (me?.role === "trainer") {
+      api("/trainer/classes").then(resp => {
+        if (resp?.items) setMyClasses(resp.items);
+      });
+    }
+  }, [me]);
+
+  useEffect(() => {
+    if (me?.role === 'student') {
+      api('/my-classes')
+        .then(data => {
+          console.log("Enrolled classes data:", data);
+          if (Array.isArray(data)) {
+            setEnrolledClasses(data);
+          } else if (data?.items) {
+            setEnrolledClasses(data.items);
+          }
+        })
+        .catch(err => console.error("Failed to load enrolled classes:", err));
+    }
+  }, [me]);
 
 
   // These are helper functions that I created for calculating dashboard based statistics
@@ -293,6 +309,39 @@ export default function Dashboard() {
                     </li>
                   ))}
                 </ul>
+              </Card.Body>
+            </Card>
+          </Col>
+        </Row>
+      )}
+
+      {me?.role === 'student' && (
+        <Row className="mb-4">
+          <Col md={12}>
+            <Card className="shadow-sm border-info">
+              <Card.Body>
+                <Card.Title className="text-info">My Enrolled Classes</Card.Title>
+                <Card.Subtitle className="mb-3 text-muted small">
+                  Your current schedule from the SRC
+                </Card.Subtitle>
+                
+                {enrolledClasses.length === 0 ? (
+                  <p className="text-muted italic small">You haven't joined any classes yet.</p>
+                ) : (
+                  <Row>
+                    {enrolledClasses.map((cls) => (
+                      <Col key={cls.id} md={4} className="mb-3">
+                        <div className="p-3 rounded border border-info bg-light h-100">
+                          <h6 className="mb-1 fw-bold">{cls.name}</h6>
+                          <div className="small text-muted">Trainer: {cls.trainer_name}</div>
+                          <div className="text-muted mt-2" style={{ fontSize: '0.7rem' }}>
+                            Class ID: {cls.id}
+                          </div>
+                        </div>
+                      </Col>
+                    ))}
+                  </Row>
+                )}
               </Card.Body>
             </Card>
           </Col>
