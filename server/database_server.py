@@ -179,9 +179,10 @@ def seed_exercises(connection_string):
 def create_stored_procedures(connection_string):
     with pyodbc.connect(connection_string) as conn:
         cursor = conn.cursor()
-#Stored procedure to add a new student
-        add_student_sql = """
-                          CREATE OR ALTER PROCEDURE add_Student
+        
+        # Stored procedure to add a new person. Can be either a Student or a Trainer
+        add_person_sql = """
+                          CREATE OR ALTER PROCEDURE add_Person
                             (
                                 @FName varchar(50),
                                 @LName varchar(50),
@@ -189,6 +190,7 @@ def create_stored_procedures(connection_string):
                                 @PasswordHash varchar(512),
                                 @DOB date,
                                 @Weight int,
+                                @PersonType varchar(20),
                                 @GeneratedID int OUTPUT
                             )
                           AS
@@ -199,44 +201,67 @@ def create_stored_procedures(connection_string):
                                 BEGIN;
                                     THROW 51000, 'Invalid Parameter(s): Given First Name, Last Name, Username, or Password are NULL or Username already exists.', 1
                                 END
-                          INSERT INTO [Person]
-                                (FName, LName, Username, PasswordHash, DOB, Weight)
-                          VALUES (@FName, @LName, @Username, @PasswordHash, @DOB, @Weight)
+                                IF @PersonType <> 'Student' AND @PersonType <> 'Trainer'
+                                BEGIN;
+                                    THROW 51001, 'Invalid Parameter: The Person being created is neither a Student nor Teacher.', 2
+                                END
 
-                          SET @GeneratedID = SCOPE_IDENTITY();
-
-                          INSERT INTO [Student] (ID) VALUES (@GeneratedID);
-
-                          END
-                        """
-        cursor.execute(add_student_sql)
-
-        add_trainer_sql = """
-                          CREATE OR ALTER PROCEDURE add_Trainer
-                            (
-                                @FName varchar(50),
-                                @LName varchar(50),
-                                @Username varchar(50),
-                                @PasswordHash varchar(512),
-                                @Weight int,
-                                @GeneratedID int OUTPUT
-                            )
-                        AS
-                        BEGIN
-                            IF EXISTS (SELECT 1 FROM Person WHERE Username = @Username)
-                            BEGIN;
-                                THROW 51000, 'Username already exists.', 1;
-                            END
-
-                            INSERT INTO [Person] (FName, LName, Username, PasswordHash, [Weight])
-                            VALUES (@FName, @LName, @Username, @PasswordHash, @Weight);
+                            INSERT INTO [Person]
+                                    (FName, LName, Username, PasswordHash, DOB, Weight)
+                            VALUES (@FName, @LName, @Username, @PasswordHash, @DOB, @Weight)
 
                             SET @GeneratedID = SCOPE_IDENTITY();
-
-                            INSERT INTO [Trainer] (ID) VALUES (@GeneratedID);
-                        END
+                            
+                            IF @PersonType = 'Student'
+                            BEGIN;
+                                INSERT INTO [Student] (ID) VALUES (@GeneratedID);
+                            END
+                            ELSE
+                            BEGIN;
+                                INSERT INTO [Trainer] (ID) VALUES (@GeneratedID);
+                            END
+                          END
                         """
-        cursor.execute(add_trainer_sql)
+        cursor.execute(add_person_sql)
+
+        # Stored procedure to update user information for profile or login features and functionality
+        update_person_profile = """
+                                 CREATE OR ALTER PROCEDURE update_person_profile
+                                    (
+                                        @PersonID int,
+                                        @FName varchar(50) = NULL,
+                                        @LName varchar(50) = NULL,
+                                        @Username varchar(50) = NULL,
+                                        @PasswordHash varchar(512) = NULL,
+                                        @DOB date = NULL,
+                                        @Weight int = NULL,
+                                    )
+                                 AS
+                                 BEGIN
+                                    IF @PersonID IS NULL OR (SELECT COUNT(*) FROM Person WHERE PersonID = @PersonID) = 0
+                                    BEGIN;
+                                        THROW 51000, 'Error: Missing Person', 1
+                                    END
+
+                                    IF @FName IS NULL SET @FName = (SELECT FName FROM Person WHERE PersonID = @PersonID)
+                                    IF @LName IS NULL SET @LName = (SELECT LName FROM Person WHERE PersonID = @PersonID)
+                                    IF @Username IS NULL SET @Username = (SELECT Username FROM Person WHERE PersonID = @PersonID)
+                                    IF @PasswordHash IS NULL SET @PasswordHash = (SELECT PasswordHash FROM Person WHERE PersonID = @PersonID)
+                                    IF @DOB IS NULL SET @DOB = (SELECT DOB FROM Person WHERE PersonID = @PersonID)
+                                    IF @Weight IS NULL SET @Weight = (SELECT Weight FROM Person WHERE PersonID = @PersonID)
+
+                                    UPDATE Person
+                                    SET PersonID = @PersonID,
+                                        FName = @FName,
+                                        LName = @LName,
+                                        Username = @Username,
+                                        PasswordHash = @PasswordHash,
+                                        DOB = @DOB,
+                                        Weight = @Weight
+                                 END
+
+                                """
+        cursor.execute(update_person_profile)
 
 #stored proc personal record (uses Achieves and Of) and upsert here is to insert or update, learned from geeksforgeeks and w3schools
         upsert_pr_sql = """
