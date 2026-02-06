@@ -172,6 +172,7 @@ class DataService:
             "username": username.strip(),
             "username_normalization": norm,
             "password_hash": password_hash,
+            "role": "student",
             "is_public": True,
             "unit_pref": "kg",
             "created_at": now_iso(),
@@ -620,11 +621,19 @@ class DataService:
         
         with pyodbc.connect(connection_string_database_copy) as conn:
             cursor = conn.cursor()
-            sql_person = "INSERT INTO [Person] (FName, LName, Username, PasswordHash, Weight) VALUES (?, ?, ?, ?, ?)"
+            sql_person = """
+            SET NOCOUNT ON;
+            INSERT INTO [Person] (FName, LName, Username, PasswordHash, Weight) 
+            VALUES (?, ?, ?, ?, ?);
+            SELECT SCOPE_IDENTITY();
+            """
             cursor.execute(sql_person, (first_name, last_name, username, password_hash, weight))
             
-            cursor.execute("SELECT SCOPE_IDENTITY()")
-            person_id = int(cursor.fetchone()[0])
+            row = cursor.fetchone()
+            if row is None or row[0] is None:
+                raise Exception("SQL Server failed to return a Person ID. Check if [Person] has an IDENTITY column.")
+                
+            person_id = int(row[0])
             
             sql_trainer = "INSERT INTO [Trainer] (ID) VALUES (?)"
             cursor.execute(sql_trainer, (person_id,))
@@ -652,29 +661,21 @@ class DataService:
         return user
     
     def create_class(self, trainer_id, name):
-        with pyodbc.connect(self.connection_string) as conn:
+        with pyodbc.connect(connection_string_database_copy) as conn:
             cursor = conn.cursor()
-            
-            sql_class = "INSERT INTO [Class] (Name) VALUES (?)"
-            cursor.execute(sql_class, (name,))
-            
-            cursor.execute("SELECT SCOPE_IDENTITY()")
-            class_id = int(cursor.fetchone()[0])
-            
-            sql_teaches = "INSERT INTO [Teaches] (TrainerID, ClassID) VALUES (?, ?)"
-            cursor.execute(sql_teaches, (trainer_id, class_id))
-
-            sql_session = "INSERT INTO [Done] (SectionID, ClassID) VALUES (?, ?)"
-            cursor.execute(sql_session, (class_id, class_id))
-
-            conn.commit()
-            
-        return {
-            "class_id": class_id, 
-            "session_id": class_id, 
-            "name": name, 
-            "trainer_id": trainer_id
-        }
+            try:
+                sql_class = "INSERT INTO [Class] (Name) OUTPUT INSERTED.ID VALUES (?)"
+                cursor.execute(sql_class, (name,))
+                class_id = cursor.fetchone()[0]
+                
+                sql_teaches = "INSERT INTO [Teaches] (TrainerID, ClassID) VALUES (?, ?)"
+                cursor.execute(sql_teaches, (trainer_id, class_id))
+                
+                conn.commit()
+                return {"class_id": class_id, "name": name}
+            except Exception as e:
+                conn.rollback()
+                raise e
 
     def get_classes(self):
         classes = []
@@ -699,15 +700,14 @@ class DataService:
         with pyodbc.connect(connection_string_database_copy) as conn:
             cursor = conn.cursor()
             
-            check_sql = "SELECT 1 FROM [HasA] WHERE StudentID = ? AND ClassID = ?"
-            cursor.execute(check_sql, (student_sql_id, class_id))
+            cursor.execute("SELECT 1 FROM [HasA] WHERE StudentID = ? AND ClassID = ?", 
+                        (student_sql_id, class_id))
             if cursor.fetchone():
-                return {"error": "Already enrolled in this class"}
+                return {"error": "Already enrolled"}
 
-            insert_sql = "INSERT INTO [HasA] (StudentID, ClassID) VALUES (?, ?)"
-            cursor.execute(insert_sql, (student_sql_id, class_id))
+            cursor.execute("INSERT INTO [HasA] (StudentID, ClassID) VALUES (?, ?)", 
+                        (student_sql_id, class_id))
             conn.commit()
-            
             return {"success": True}
         
     def delete_class(self, trainer_id, class_id):
@@ -726,3 +726,24 @@ class DataService:
             
             conn.commit()
             return {"success": True}
+        
+    def get_student_enrollments(self, student_sql_id):
+        enrolled_classes = []
+        try:
+            with pyodbc.connect(connection_string_database_copy) as conn:
+                cursor = conn.cursor()
+                # Calling the stored procedure we just defined
+                cursor.execute("{CALL get_StudentEnrollments (?)}", (student_sql_id,))
+                
+                for row in cursor.fetchall():
+                    enrolled_classes.append({
+                        "id": row[0],
+                        "name": row[1],
+                        "trainer_name": f"{row[2]} {row[3]}"
+                    })
+        except Exception as e:
+            print(f"SQL Error in get_student_enrollments: {e}")
+            import traceback
+            traceback.print_exc()
+            
+        return enrolled_classes

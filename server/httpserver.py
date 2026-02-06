@@ -286,19 +286,30 @@ def get_all_classes():
 @app.post('/api/classes/create')
 @login_required
 def register_class():
-    error = require_json()
-    if error:
-        return error
+    data = request.get_json(force=True, silent=True)
+    
+    # If Flask thinks it's a string, manually convert it to a dict
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except:
+            return jsonify({"error": "Invalid JSON format"}), 400
+
+    if not data or not isinstance(data, dict):
+        return jsonify({"error": "Data must be a JSON object"}), 400
         
-    data = request.get_json() or {}
     name = (data.get("name") or "").strip()
     
+    # Debugging: Check your terminal for this!
+    print(f"DEBUG: Data Type: {type(data)}, Name: {name}")
+
     user = current_user()
     trainer_sql_id = user.get("sql_id")
     role = user.get("role")
 
     if not name:
         return jsonify({"error": "Missing class name"}), 400
+    
     if role != "trainer" or not trainer_sql_id:
         return jsonify({"error": "Only registered trainers can create classes"}), 403
 
@@ -329,6 +340,8 @@ def delete_class(class_id):
 @login_required
 def enroll_in_class(class_id):
     user = current_user()
+
+    print(f"DEBUG ENROLL: User={user.get('username')}, Role={user.get('role')}, SQL_ID={user.get('sql_id')}")
     
     if user.get("role") != "student":
         return jsonify({"error": "Only students can enroll in classes"}), 403
@@ -343,6 +356,21 @@ def enroll_in_class(class_id):
         return jsonify(result), 400
         
     return jsonify(result), 200
+
+@app.get("/api/my-classes")
+@login_required
+def get_my_classes():
+    user = current_user()
+    
+    if user.get("role") != "student":
+        return jsonify({"error": "Unauthorized"}), 403
+        
+    student_sql_id = user.get("sql_id")
+    if not student_sql_id:
+        return jsonify({"error": "Student profile not found"}), 404
+        
+    classes = ds.get_student_enrollments(student_sql_id)
+    return jsonify(classes)
 
 # ----------------------------------- Health ---------------------------------------------
 @app.get("/api/health")
