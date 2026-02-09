@@ -766,3 +766,14 @@ class DataService:
         except Exception as e:
             print(f"SQL Error in get_trainer_classes: {e}")
         return trainer_classes
+    
+    def unenroll_student(self, student_id, class_id):
+        try:
+            with pyodbc.connect(connection_string_database_copy) as conn:
+                cursor = conn.cursor()
+                cursor.execute('{CALL UnenrollStudent (?,?)}', [student_id, class_id])
+                conn.commit()
+                return {"success": True}
+        except Exception as e:
+            print(f"SQL Error in UnenrollStudent: {e}")
+            return {"error": str(e)}

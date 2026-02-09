@@ -171,6 +171,24 @@ export default function Dashboard() {
       setDeletingId(null); // Reset confirmation state
     }
   };
+
+  const handleUnenroll = async (classId) => {
+    try {
+      const response = await api(`/classes/${classId}/unenroll`, {
+        method: "POST",
+      });
+
+      if (response && !response.error) {
+        setStatusMsg({ type: "success", text: "Successfully unenrolled from class." });
+        setEnrolledClasses(enrolledClasses.filter((cls) => cls.id !== classId));
+      } else {
+        setStatusMsg({ type: "danger", text: response.error || "Failed to unenroll." });
+      }
+    } catch (e) {
+      console.error(e);
+      setStatusMsg({ type: "danger", text: "An error occurred while unenrolling." });
+    }
+  };
   
   return (
     <div className="dashboard-page py-3">
@@ -351,6 +369,14 @@ export default function Dashboard() {
                           <div className="text-muted mt-2" style={{ fontSize: '0.7rem' }}>
                             Class ID: {cls.id}
                           </div>
+                          <Button 
+                            variant="outline-danger" 
+                            size="sm" 
+                            className="mt-3 w-100"
+                            onClick={() => handleUnenroll(cls.id)}
+                          >
+                            Leave Class
+                          </Button>
                         </div>
                       </Col>
                     ))}

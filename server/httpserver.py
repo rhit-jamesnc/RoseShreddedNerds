@@ -389,6 +389,21 @@ def get_trainer_dashboard_classes():
     classes = ds.get_trainer_classes(trainer_sql_id)
     return jsonify({"items": classes})
 
+@app.post("/api/classes/<int:class_id>/unenroll")
+@login_required
+def unenroll_from_class(class_id):
+    user = current_user()
+    if user.get("role") != "student":
+        return jsonify({"error": "Only students can unenroll"}), 403
+
+    student_sql_id = user.get("sql_id")
+    result = ds.unenroll_student(student_sql_id, class_id)
+    
+    if "error" in result:
+        return jsonify(result), 400
+        
+    return jsonify(result), 200
+
 # ----------------------------------- Health ---------------------------------------------
 @app.get("/api/health")
 def health():

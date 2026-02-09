@@ -448,9 +448,28 @@ def create_stored_procedures(connection_string):
         cursor.execute(leaderboard_sql)
         conn.commit()
 
+        #stored proc for unenrolling a student from a class
+        unenrollStudent_sql = """
+            CREATE OR ALTER PROCEDURE UnenrollStudent
+                @StudentID INT, 
+                @ClassID INT
+            AS
+            BEGIN
+                SET NOCOUNT ON;
 
-create_db(connection_string_master)
-create_tables(connection_string_database_copy)
-seed_exercises(connection_string_database_copy)
-create_stored_procedures(connection_string_database_copy)
+                DELETE FROM [HasA] 
+                WHERE StudentID = @StudentID AND ClassID = @ClassID;
+
+                DELETE FROM [Done] 
+                WHERE ClassID = @ClassID; 
+            END
+        """
+        cursor.execute(unenrollStudent_sql)
+        conn.commit()
+
+
+# create_db(connection_string_master)
+# create_tables(connection_string_database_copy)
+# seed_exercises(connection_string_database_copy)
+#create_stored_procedures(connection_string_database_copy)
 #destroy_db(connection_string_master)
