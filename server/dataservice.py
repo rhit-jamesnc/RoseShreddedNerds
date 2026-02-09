@@ -162,7 +162,14 @@ class DataService:
 #insert into student table
             #cursor.execute("INSERT INTO [Student] (ID) VALUES (?)", (person_id,))
             #conn.commit()
-            cursor.execute("{CALL add_person(?, ?, ?, ?, ?, ?, ?)}", first_name, last_name, username, password_hash, dob, weight, role)
+            cursor.execute("""
+                SET NOCOUNT ON;
+                DECLARE @GeneratedID int;
+
+                EXEC add_Person ?, ?, ?, ?, ?, ?, ?, @GeneratedID OUTPUT;
+
+                SELECT @GeneratedID;
+                """, first_name, last_name, username, password_hash, dob, weight, role)
             person_id = int(cursor.fetchone()[0])
 
         user_id = self._next_id("users")
