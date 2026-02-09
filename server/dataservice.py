@@ -713,7 +713,7 @@ class DataService:
             return {"success": True}
         
     def delete_class(self, trainer_id, class_id):
-        with pyodbc.connect(self.connection_string) as conn:
+        with pyodbc.connect(connection_string_database_copy) as conn:
             cursor = conn.cursor()
             
             check_sql = "SELECT 1 FROM [Teaches] WHERE TrainerID = ? AND ClassID = ?"
@@ -724,7 +724,7 @@ class DataService:
             cursor.execute("DELETE FROM [HasA] WHERE ClassID = ?", (class_id,))
             cursor.execute("DELETE FROM [Done] WHERE ClassID = ?", (class_id,))
             cursor.execute("DELETE FROM [Teaches] WHERE ClassID = ?", (class_id,))
-            cursor.execute("DELETE FROM [Class] WHERE ClassID = ?", (class_id,))
+            cursor.execute("DELETE FROM [Class] WHERE ID = ?", (class_id,))
             
             conn.commit()
             return {"success": True}
@@ -749,3 +749,20 @@ class DataService:
             traceback.print_exc()
             
         return enrolled_classes
+    
+    def get_trainer_classes(self, trainer_sql_id):
+        trainer_classes = []
+        try:
+            with pyodbc.connect(connection_string_database_copy) as conn:
+                cursor = conn.cursor()
+                cursor.execute("{CALL get_TrainerClasses (?)}", (trainer_sql_id,))
+                
+                for row in cursor.fetchall():
+                    trainer_classes.append({
+                        "id": row[0],
+                        "name": row[1],
+                        "trainer_name": f"{row[2]} {row[3]}"
+                    })
+        except Exception as e:
+            print(f"SQL Error in get_trainer_classes: {e}")
+        return trainer_classes

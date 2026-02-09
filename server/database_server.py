@@ -1,3 +1,4 @@
+MINE
 # Below are the list of sites we referred to or used to connect to the Microsoft
 # https://medium.com/@gunkurnia/connecting-python-to-sql-server-a-comprehensive-guide-to-essential-libraries-1dfcba96fafb
 # https://hex.tech/blog/connecting-python-sql-server/
@@ -323,7 +324,7 @@ def create_stored_procedures(connection_string):
 
 
         get_StudentEnrollments = """
-            CREATE PROCEDURE get_StudentEnrollments
+            CREATE OR ALTER PROCEDURE get_StudentEnrollments
                 @StudentID INT
             AS
             BEGIN
@@ -331,7 +332,7 @@ def create_stored_procedures(connection_string):
                 SELECT c.ID, c.Name, p.FName, p.LName
                 FROM [HasA] h
                 JOIN [Class] c ON h.ClassID = c.ID
-                JOIN [Teaches] t ON c.ID = t.SessionID
+                JOIN [Teaches] t ON c.ID = t.ClassID
                 JOIN [Person] p ON t.TrainerID = p.ID
                 WHERE h.StudentID = @StudentID;
             END
@@ -339,7 +340,22 @@ def create_stored_procedures(connection_string):
         cursor.execute(get_StudentEnrollments)
         conn.commit()
 
-        #stored proc personal record (uses Achieves and Of) and upsert here is to insert or update, learned from geeksforgeeks and w3schools
+        get_trainer_classes_sql = """
+            CREATE OR ALTER PROCEDURE get_TrainerClasses
+                @TrainerID INT
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+                SELECT c.ID, c.Name, p.FName, p.LName 
+                FROM [Class] c
+                JOIN [Teaches] t ON c.ID = t.ClassID
+                JOIN [Person] p ON t.TrainerID = p.ID
+                WHERE t.TrainerID = @TrainerID;
+            END
+        """
+        cursor.execute(get_trainer_classes_sql)
+
+#stored proc personal record (uses Achieves and Of) and upsert here is to insert or update, learned from geeksforgeeks and w3schools
         upsert_pr_sql = """
             CREATE OR ALTER PROCEDURE upsert_PersonalRecord 
                 @StudentID    int,

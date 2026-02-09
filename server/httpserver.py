@@ -374,6 +374,21 @@ def get_my_classes():
     classes = ds.get_student_enrollments(student_sql_id)
     return jsonify(classes)
 
+@app.get("/api/trainer-classes")
+@login_required
+def get_trainer_dashboard_classes():
+    user = current_user()
+    
+    if user.get("role") != "trainer":
+        return jsonify({"error": "Unauthorized"}), 403
+        
+    trainer_sql_id = user.get("sql_id")
+    if not trainer_sql_id:
+        return jsonify({"error": "Trainer profile not found"}), 404
+        
+    classes = ds.get_trainer_classes(trainer_sql_id)
+    return jsonify({"items": classes})
+
 # ----------------------------------- Health ---------------------------------------------
 @app.get("/api/health")
 def health():
