@@ -1,4 +1,3 @@
-MINE
 # Below are the list of sites we referred to or used to connect to the Microsoft
 # https://medium.com/@gunkurnia/connecting-python-to-sql-server-a-comprehensive-guide-to-essential-libraries-1dfcba96fafb
 # https://hex.tech/blog/connecting-python-sql-server/
