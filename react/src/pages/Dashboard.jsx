@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { Card, Row, Col, Badge, Alert, Button } from "react-bootstrap";
 import { api } from "../api";
-
 export default function Dashboard() {
 
   const [me, setMe] = useState(null);
@@ -12,6 +11,13 @@ export default function Dashboard() {
   const [enrolledClasses, setEnrolledClasses] = useState([]);
   const [statusMsg, setStatusMsg] = useState({ type: "", text: "" });
   const [deletingId, setDeletingId] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [editDate, setEditDate] = useState("");
+  const [deletingSession, setDeletingSession] = useState({ classId: null, date: null });
+  const [availableExercises, setAvailableExercises] = useState([]);
+  const [selectedExercises, setSelectedExercises] = useState([]);
+  const [exerciseSearch, setExerciseSearch] = useState("");
+  const [currentSessionId, setCurrentSessionId] = useState(null);
 
   // Here I am loading the current user and some of their recentmost workouts
   useEffect(() => {
@@ -34,7 +40,6 @@ export default function Dashboard() {
           }
           return date_b.localeCompare(date_a);
         });
-        console.log("Dashboard workouts resp:", resp);   // ← debug log
         setWorkouts(items);
       })
       .catch((e) => {
@@ -42,22 +47,30 @@ export default function Dashboard() {
         setErr("Could not load your workouts.");
         setWorkouts([]);
       });
+
+    api('/exercises')
+      .then(data => setAvailableExercises(data || []))
+      .catch(err => console.error("Exercises load error:", err));
+
+    api('/sessions').then(data => {
+      if (data && data.length > 0) {
+        setCurrentSessionId(data[0].id); 
+      }
+    });
   }, []);
 
   useEffect(() => {
-    console.log("Current User for Class Fetch:", me); // Check this in F12 console
-  if (me?.role === "trainer") {
-    api("/trainer-classes").then(resp => {
-      if (resp?.items) setMyClasses(resp.items);
-    });
-  }
+    if (me?.role === "trainer") {
+      api("/trainer-classes").then(resp => {
+        if (resp?.items) setMyClasses(resp.items);
+      });
+    }
   }, [me]);
 
   useEffect(() => {
     if (me?.role === 'student') {
       api('/my-classes')
         .then(data => {
-          console.log("Enrolled classes data:", data);
           if (Array.isArray(data)) {
             setEnrolledClasses(data);
           } else if (data?.items) {
@@ -142,13 +155,13 @@ export default function Dashboard() {
     try {
       const response = await api("/classes/create", {
         method: "POST",
-        body: JSON.stringify({ name: newClassName }),
+        body: ({ name: newClassName }),
       });
 
       if (response && !response.error) {
         setStatusMsg({ type: "success", text: `Class "${newClassName}" created successfully!` });
-        setMyClasses([...myClasses, { id: response.class_id, name: newClassName }]);        setMyClasses([...myClasses, { id: response.class_id, name: newClassName }]);
-        setNewClassName(""); // Clear the input
+        setMyClasses([...myClasses, { id: response.class_id, name: newClassName }]);
+        setNewClassName("");
       } else {
         setStatusMsg({ type: "danger", text: response.error || "Failed to create class." });      }
     } catch (e) {
@@ -188,6 +201,127 @@ export default function Dashboard() {
       console.error(e);
       setStatusMsg({ type: "danger", text: "An error occurred while unenrolling." });
     }
+  };
+
+  const handleSaveSession = async (classId) => {
+    if (!editDate) {
+      setStatusMsg({ type: "warning", text: "Please select a date." });
+      return;
+    }
+
+    try {
+      const exerciseNames = selectedExercises.map(ex => ex.name);
+
+      const response = await api(`/classes/${classId}/update-session`, {
+        method: "POST",
+        body: { 
+          class_id: classId,
+          session_date: editDate,
+          exercises: exerciseNames
+        },
+      });
+
+      if (response && !response.error) {
+        setMyClasses(prev => prev.map(cls => {
+          if (cls.id === classId) {
+            const updatedDates = cls.session_dates && cls.session_dates !== "Not Set" 
+              ? (cls.session_dates.includes(editDate) ? cls.session_dates : `${cls.session_dates}, ${editDate}`)
+              : editDate;
+
+            return { 
+              ...cls, 
+              session_dates: updatedDates,
+              exercises: exerciseNames.join(", ") 
+            };
+          }
+          return cls;
+        }));
+        
+        setSelectedExercises([]);
+        setEditingId(null);
+        setEditDate("");
+        setStatusMsg({ type: "success", text: "Session added!" });
+
+        const resp = await api("/trainer-classes");
+        if (resp?.items) setMyClasses(resp.items);
+      } else {
+        setStatusMsg({ type: "danger", text: response.error || "Update failed." });
+      }
+    } catch (e) {
+      console.log(e);
+      setStatusMsg({ type: "danger", text: "A network error occurred." });
+    }
+  };
+
+  const handleDeleteSession = async (classId, dateToDelete) => {
+    try {
+      const response = await api(`/classes/${classId}/delete-session`, {
+        method: "DELETE",
+        body: { session_date: dateToDelete },
+      });
+
+      if (response && !response.error) {
+        setMyClasses(prev => prev.map(cls => {
+          if (cls.id === classId) {
+            const dateArray = cls.session_dates.split(", ").filter(d => d !== dateToDelete);
+            return {
+              ...cls,
+              session_dates: dateArray.length > 0 ? dateArray.join(", ") : "Not Set"
+            };
+          }
+          return cls;
+        }));
+        setStatusMsg({ type: "success", text: `Session on ${dateToDelete} removed.` });
+      } else {
+        setStatusMsg({ type: "danger", text: response.error || "Delete failed." });
+      }
+    } catch {
+      setStatusMsg({ type: "danger", text: "An error occurred during deletion." });
+    } finally {
+      setDeletingSession({ classId: null, date: null });
+    }
+  };
+
+  const handleAddExercise = async (exerciseName) => {
+    if (!exerciseName.trim() || !editingId) {
+      console.error("Missing exercise name or active session ID");
+      return;
+    }
+
+    try {
+      let exercise = availableExercises.find(
+        (ex) => ex.name.toLowerCase() === exerciseName.toLowerCase().trim()
+      );
+
+      if (!exercise) {
+        exercise = await api('/exercises', {
+          method: 'POST',
+          body: { name: exerciseName.trim(), category: 'strength' }
+        });
+        setAvailableExercises(prev => [...prev, exercise]);
+      }
+
+      await api('/logs', {
+        method: 'POST',
+        body: {
+          exercise_id: exercise.id,
+          session_id: currentSessionId, 
+          is_pr: 0 
+        }
+      });
+
+      setSelectedExercises(prev => [
+        ...prev, 
+        { ...exercise, sets: 0, reps: 0, weight: 0 }
+      ]);
+      
+    } catch (error) {
+      console.error("Failed to log exercise:", error);
+    }
+  };
+
+  const handleRemoveExercise = (index) => {
+    setSelectedExercises(selectedExercises.filter((_, i) => i !== index));
   };
   
   return (
@@ -317,29 +451,175 @@ export default function Dashboard() {
               <Card.Body>
                 <Card.Title>Your Active Classes</Card.Title>
                 <ul className="list-group list-group-flush">
-                  {myClasses.map(c => (
-                    <li key={c.id} className="list-group-item d-flex justify-content-between align-items-center py-3">
-                      <div>
-                        <span className="fw-bold">{c.name}</span> <span className="text-muted small">#({c.id})</span>
-                      </div>
-                      
-                      {deletingId === c.id ? (
-                        <div className="bg-light p-2 border rounded d-flex align-items-center gap-2">
-                          <span className="small text-danger fw-bold">Delete?</span>
-                          <Button variant="danger" size="sm" onClick={() => confirmDeleteClass(c.id)}>Yes</Button>
-                          <Button variant="secondary" size="sm" onClick={() => setDeletingId(null)}>No</Button>
-                        </div>
-                      ) : (
-                        <Button 
-                          variant="outline-danger" 
-                          size="sm" 
-                          onClick={() => setDeletingId(c.id)}
-                        >
-                          Delete
-                        </Button>
-                      )}
-                    </li>
-                  ))}
+                  {myClasses.map((c) => (
+  <li key={c.id} className="list-group-item py-3">
+    <div className="d-flex justify-content-between align-items-start">
+      <div className="flex-grow-1">
+        <span className="fw-bold fs-5">{c.name}</span>
+        
+        {/* Session History Section */}
+        <div className="text-muted small mt-2">
+          <label className="fw-bold d-block mb-1">Session History:</label>
+          <div className="d-flex flex-column gap-2 mt-1">
+  {c.session_dates && c.session_dates !== "Not Set" ? (
+    c.session_dates.split(", ").map((date, index) => (
+      /* Changed to d-inline-block and added a max-width to keep them small */
+      <div key={index} className="border rounded p-2 bg-white shadow-sm d-inline-block" style={{ minWidth: '200px', width: 'fit-content' }}>
+        <div className="d-flex justify-content-between align-items-center gap-3">
+          {/* Left Side: Date */}
+          <Badge bg="info" className="px-2 py-1" style={{ fontSize: '0.75rem' }}>{date}</Badge>
+          
+          {/* Right Side: Buttons */}
+          <div className="d-flex align-items-center gap-2">
+            {deletingSession.classId === c.id && deletingSession.date === date ? (
+              <div className="d-flex align-items-center gap-1">
+                <Button variant="danger" size="sm" className="py-0 px-1" style={{ fontSize: '0.65rem' }} onClick={() => handleDeleteSession(c.id, date)}>Yes</Button>
+                <Button variant="secondary" size="sm" className="py-0 px-1" style={{ fontSize: '0.65rem' }} onClick={() => setDeletingSession({ classId: null, date: null })}>No</Button>
+              </div>
+            ) : (
+              <>
+                <Button 
+                  variant="link" 
+                  className="p-0 text-decoration-none text-muted d-flex align-items-center" 
+                  onClick={() => {
+                    setEditingId(c.id);
+                    setEditDate(date);
+                  }}
+                >
+                  <i className="bi bi-pencil-square me-1" style={{ fontSize: '0.8rem' }}></i>
+                  <span style={{ fontSize: '0.75rem' }}>Edit</span>
+                </Button>
+                
+                <Button 
+                  variant="link" 
+                  className="p-0 text-decoration-none text-danger d-flex align-items-center" 
+                  onClick={() => setDeletingSession({ classId: c.id, date: date })}
+                >
+                  <i className="bi bi-trash me-1" style={{ fontSize: '0.8rem' }}></i>
+                  <span style={{ fontSize: '0.75rem' }}>Delete</span>
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Exercises Text - only shows if exists, kept small */}
+        {c.exercises && (
+          <div className="mt-1 text-dark pt-1 border-top" style={{ fontSize: '0.75rem', fontStyle: 'italic' }}>
+             {c.exercises}
+          </div>
+        )}
+      </div>
+    ))
+  ) : (
+    <Badge bg="secondary">No Sessions</Badge>
+  )}
+</div>
+        </div>
+      </div>
+
+      {/* Main Class Actions (The buttons that were missing/squished) */}
+      <div className="d-flex gap-2 ms-3">
+        <Button 
+          variant="outline-secondary" 
+          size="sm" 
+          onClick={() => {
+            if (editingId === c.id) {
+              setEditingId(null);
+              setEditDate("");
+            } else {
+              setEditingId(c.id);
+              setEditDate("");
+            }
+          }}
+        >
+          {editingId === c.id ? "Close" : "Add Session"}
+        </Button>
+
+        {deletingId === c.id ? (
+          <div className="bg-light p-1 border rounded d-flex gap-1 align-items-center">
+            <span className="small text-danger fw-bold px-1">Class?</span>
+            <Button variant="danger" size="sm" onClick={() => confirmDeleteClass(c.id)}>Yes</Button>
+            <Button variant="secondary" size="sm" onClick={() => setDeletingId(null)}>No</Button>
+          </div>
+        ) : (
+          <Button variant="outline-danger" size="sm" onClick={() => setDeletingId(c.id)}>
+            Delete Class
+          </Button>
+        )}
+      </div>
+    </div>
+
+    {/* The Edit Panel */}
+    {editingId === c.id && (
+      <div className="mt-3 p-3 border rounded bg-light">
+        <h6 className="small fw-bold text-uppercase text-muted">Update Session Details</h6>
+        <Row className="g-2">
+          <Col md={4}>
+            <label className="small fw-bold">Session Date</label>
+            <input type="date" className="form-control form-control-sm" value={editDate} onChange={(e) => setEditDate(e.target.value)} />
+          </Col>
+          <Col md={8}>
+            <label className="small fw-bold">Exercises for this Session</label>
+            
+            <div className="d-flex flex-wrap gap-1 mb-2">
+              {selectedExercises.map((ex, idx) => (
+                <Badge key={idx} bg="primary" className="d-flex align-items-center gap-2">
+                  {ex.name}
+                  <i 
+                    className="bi bi-x-circle-fill cursor-pointer" 
+                    onClick={() => handleRemoveExercise(idx)}
+                    style={{ cursor: 'pointer' }}
+                  ></i>
+                </Badge>
+              ))}
+              {selectedExercises.length === 0 && (
+                <span className="text-muted small italic">No exercises added yet.</span>
+              )}
+            </div>
+
+            <div className="input-group input-group-sm">
+  <input 
+    type="text" 
+    className="form-control" 
+    placeholder="Search or type new exercise (e.g. Deadlift)"
+    list="exerciseOptions"
+    value={exerciseSearch} // Bind to state
+    onChange={(e) => setExerciseSearch(e.target.value)} // Update state
+    onKeyDown={(e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleAddExercise(exerciseSearch);
+        setExerciseSearch("");
+      }
+    }}
+  />
+  <datalist id="exerciseOptions">
+    {availableExercises.map((ex) => (
+      <option key={ex.id} value={ex.name} />
+    ))}
+  </datalist>
+  <Button 
+    variant="outline-primary" 
+    onClick={() => {
+      handleAddExercise(exerciseSearch);
+      setExerciseSearch("");
+    }}
+  >
+    Add
+  </Button>
+</div>
+          </Col>
+        </Row>
+        <div className="mt-2 text-end">
+          <Button variant="success" size="sm" onClick={() => handleSaveSession(c.id)}>
+            Save Session Changes
+          </Button>
+        </div>
+      </div>
+    )}
+  </li>
+))}
                 </ul>
               </Card.Body>
             </Card>
@@ -366,8 +646,19 @@ export default function Dashboard() {
                         <div className="p-3 rounded border border-info bg-light h-100">
                           <h6 className="mb-1 fw-bold">{cls.name}</h6>
                           <div className="small text-muted">Trainer: {cls.trainer_name}</div>
-                          <div className="text-muted mt-2" style={{ fontSize: '0.7rem' }}>
-                            Class ID: {cls.id}
+                          <div className="session-history">
+                            <label className="d-block small fw-bold text-muted">Session History:</label>
+                            {cls.session_dates && cls.session_dates !== "Not Set" ? (
+                              <div className="d-flex flex-wrap gap-1">
+                                {cls.session_dates.split(', ').map((date, index) => (
+                                  <Badge key={index} bg="light" text="dark" className="border">
+                                    {date}
+                                  </Badge>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-muted small italic">No sessions recorded</span>
+                            )}
                           </div>
                           <Button 
                             variant="outline-danger" 

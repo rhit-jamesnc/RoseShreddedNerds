@@ -290,7 +290,6 @@ def get_all_classes():
 def register_class():
     data = request.get_json(force=True, silent=True)
     
-    # If Flask thinks it's a string, manually convert it to a dict
     if isinstance(data, str):
         try:
             data = json.loads(data)
@@ -301,9 +300,6 @@ def register_class():
         return jsonify({"error": "Data must be a JSON object"}), 400
         
     name = (data.get("name") or "").strip()
-    
-    # Debugging: Check your terminal for this!
-    print(f"DEBUG: Data Type: {type(data)}, Name: {name}")
 
     user = current_user()
     trainer_sql_id = user.get("sql_id")
@@ -342,8 +338,6 @@ def delete_class(class_id):
 @login_required
 def enroll_in_class(class_id):
     user = current_user()
-
-    print(f"DEBUG ENROLL: User={user.get('username')}, Role={user.get('role')}, SQL_ID={user.get('sql_id')}")
     
     if user.get("role") != "student":
         return jsonify({"error": "Only students can enroll in classes"}), 403
@@ -385,6 +379,8 @@ def get_trainer_dashboard_classes():
     trainer_sql_id = user.get("sql_id")
     if not trainer_sql_id:
         return jsonify({"error": "Trainer profile not found"}), 404
+    
+    
         
     classes = ds.get_trainer_classes(trainer_sql_id)
     return jsonify({"items": classes})
@@ -404,6 +400,129 @@ def unenroll_from_class(class_id):
         
     return jsonify(result), 200
 
+@app.route("/api/classes/<int:class_id>/update-session", methods=["POST"])
+@login_required
+def update_session_route(class_id):
+    data = request.get_json(force=True, silent=True)
+    
+    if not isinstance(data, dict):
+        return jsonify({"error": "Data must be a JSON object"}), 400
+        
+    session_date = data.get('session_date')
+    exercises = data.get('exercises', "")
+
+    if not session_date:
+        return jsonify({"error": "Missing session_date"}), 400
+        
+    result = ds.update_class_session(class_id, session_date, exercises)
+    
+    if "error" in result:
+        return jsonify(result), 500
+    return jsonify(result), 200
+
+@app.get("/api/classes/<int:class_id>/sessions")
+@login_required
+def get_class_sessions(class_id):
+    user = current_user()
+    if user.get("role") != "trainer":
+        return jsonify({"error": "Unauthorized"}), 403
+
+    try:
+        sessions = ds.get_class_sessions(class_id)
+        return jsonify({"items": sessions}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/classes/<int:class_id>/delete-session", methods=["DELETE"])
+@login_required
+def delete_class_session_route(class_id):
+    data = request.get_json(force=True, silent=True)
+    
+    if not data:
+        return jsonify({"error": "No JSON data received"}), 400
+        
+    session_date = data.get('session_date')
+
+    if not session_date:
+        return jsonify({"error": "Missing session_date"}), 400
+
+    try:
+        result = ds.delete_class_session(class_id, session_date)
+        
+        if "error" in result:
+            return jsonify(result), 404
+            
+        return jsonify(result), 200
+    except AttributeError:
+        return jsonify({"error": "The delete_class_session method is missing from DataService"}), 500
+    except Exception as e:
+        print(f"SERVER ERROR: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.post("/api/sessions/<int:session_id>/update")
+@login_required
+def update_specific_session(session_id):
+    error = require_json()
+    if error:
+        return error
+        
+    data = request.get_json()
+    new_date = data.get("date")
+
+    if not new_date:
+        return jsonify({"error": "Missing date"}), 400
+
+    try:
+        result = ds.update_session_date(session_id, new_date)
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
+@app.get("/api/sessions")
+@login_required
+def list_all_sessions():
+    try:
+        sessions = ds.get_all_sessions_sql() 
+        return jsonify(sessions), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.post("/api/logs")
+@login_required
+def create_exercise_log():
+    error = require_json()
+    if error: return error
+    
+    data = request.get_json()
+    ex_id = data.get("exercise_id")
+    sess_id = data.get("session_id")
+    is_pr = data.get("is_pr", 0)
+
+    if not ex_id or not sess_id:
+        return jsonify({"error": "Missing exercise_id or session_id"}), 400
+
+    try:
+        result = ds.log_exercise_to_session(ex_id, sess_id, is_pr)
+        return jsonify(result), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.post("/api/exercises")
+@login_required
+def api_create_exercise():
+    error = require_json()
+    if error: return error
+    
+    data = request.get_json()
+    name = data.get("name")
+    category = data.get("category", "General")
+    
+    if not name:
+        return jsonify({"error": "Name is required"}), 400
+        
+    new_ex = ds.create_exercise(name, category)
+    return jsonify(new_ex), 201
+
 # ----------------------------------- Health ---------------------------------------------
 @app.get("/api/health")
 def health():
@@ -414,3 +533,7 @@ def health():
 # -------------------------------------Main----------------------------------------------
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=8080, debug=True)
+
+@app.errorhandler(500)
+def server_error(e):
+    return jsonify({"error": "Server error", "details": str(e)}), 500

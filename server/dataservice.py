@@ -262,19 +262,22 @@ class DataService:
     
 
     # Method to register an exercise name and category pair in the database
-    def create_exercise(self, name, category):
-        exercise_id = self._next_id("exercises")
-        exercise = {"id": exercise_id, "name": name, "category": category}
-        exercises = self.db.get("exercises")
-        exercises[str(exercise_id)] = exercise
-        self.db.set("exercises", exercises)
-        self.dump()
-        return exercise
-    
-    # Gives a list of all the exercises in the database
     def list_exercises(self):
-        exercises = list(self.db.get("exercises").values())
-        exercises.sort(key=lambda exercise: exercise["name"].lower())
+        exercises = []
+        try:
+            with pyodbc.connect(connection_string_database_copy) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT ID, [Name], [Category] FROM [Exercise] ORDER BY [Name] ASC")
+                
+                for row in cursor.fetchall():
+                    exercises.append({
+                        "id": row[0],
+                        "name": row[1],
+                        "category": row[2]
+                    })
+        except Exception as e:
+            print(f"SQL Error in list_exercises: {e}")
+            
         return exercises
     
     # Gets the name of exercise base don the id
@@ -666,7 +669,10 @@ class DataService:
         with pyodbc.connect(connection_string_database_copy) as conn:
             cursor = conn.cursor()
             try:
-                sql_class = "INSERT INTO [Class] (Name) OUTPUT INSERTED.ID VALUES (?)"
+                sql_class = """
+                    SET NOCOUNT ON;
+                    INSERT INTO [Class] (Name) OUTPUT INSERTED.ID VALUES (?)
+                """
                 cursor.execute(sql_class, (name,))
                 class_id = cursor.fetchone()[0]
                 
@@ -722,8 +728,17 @@ class DataService:
                 return {"error": "Unauthorized: You do not own this class"}
 
             cursor.execute("DELETE FROM [HasA] WHERE ClassID = ?", (class_id,))
-            cursor.execute("DELETE FROM [Done] WHERE ClassID = ?", (class_id,))
             cursor.execute("DELETE FROM [Teaches] WHERE ClassID = ?", (class_id,))
+
+            cursor.execute("SELECT ID FROM [Session] WHERE ClassID = ?", (class_id,))
+            session_ids = [row[0] for row in cursor.fetchall()]
+            if session_ids:
+                placeholders = ','.join(['?'] * len(session_ids))
+                cursor.execute(f"DELETE FROM [Logs] WHERE SessionID IN ({placeholders})", session_ids)
+                cursor.execute(f"DELETE FROM [Session] WHERE ClassID = ?", (class_id,))
+            cursor.execute("DELETE FROM [Class] WHERE ID = ?", (class_id,))
+
+            
             cursor.execute("DELETE FROM [Class] WHERE ID = ?", (class_id,))
             
             conn.commit()
@@ -750,23 +765,54 @@ class DataService:
             
         return enrolled_classes
     
-    def get_trainer_classes(self, trainer_sql_id):
-        trainer_classes = []
-        try:
-            with pyodbc.connect(connection_string_database_copy) as conn:
-                cursor = conn.cursor()
-                cursor.execute("{CALL get_TrainerClasses (?)}", (trainer_sql_id,))
+    def get_trainer_classes(self, trainer_id):
+        with pyodbc.connect(connection_string_database_copy) as conn:
+            cursor = conn.cursor()
+            try:
+                query = """
+                    SELECT 
+                        c.ID, 
+                        c.Name, 
+                        p.FName, 
+                        p.LName,
+                        (
+                            SELECT STRING_AGG(CAST(s.Date AS VARCHAR), ', ') 
+                            FROM [Session] s 
+                            WHERE s.ClassID = c.ID
+                        ) as session_dates,
+                        (
+                            SELECT STRING_AGG(sub.ExName, ', ')
+                            FROM (
+                                SELECT DISTINCT e.Name as ExName
+                                FROM [Logs] l
+                                JOIN [Exercise] e ON l.ExerciseID = e.ID
+                                JOIN [Session] s ON l.SessionID = s.ID
+                                WHERE s.ClassID = c.ID
+                            ) sub
+                        ) as exercises
+                    FROM [Class] c
+                    JOIN [Teaches] t ON c.ID = t.ClassID
+                    JOIN [Person] p ON t.TrainerID = p.ID
+                    WHERE t.TrainerID = ?
+                """
+                cursor.execute(query, (trainer_id,))
                 
-                for row in cursor.fetchall():
-                    trainer_classes.append({
+                classes = []
+                rows = cursor.fetchall()
+                
+                for row in rows:
+                    classes.append({
                         "id": row[0],
                         "name": row[1],
-                        "trainer_name": f"{row[2]} {row[3]}"
+                        "trainer_name": f"{row[2]} {row[3]}",
+                        "session_dates": row[4] if row[4] else "Not Set",
+                        "exercises": row[5] if row[5] else ""
                     })
-        except Exception as e:
-            print(f"SQL Error in get_trainer_classes: {e}")
-        return trainer_classes
-    
+                return classes
+            except Exception as e:
+                print(f"Database error: {e}")
+                return []
+            
     def unenroll_student(self, student_id, class_id):
         try:
             with pyodbc.connect(connection_string_database_copy) as conn:
@@ -777,3 +823,199 @@ class DataService:
         except Exception as e:
             print(f"SQL Error in UnenrollStudent: {e}")
             return {"error": str(e)}
+            
+    def update_class_session(self, class_id, session_date, exercises):
+        if isinstance(exercises, str):
+            exercises = [exercises]
+        with pyodbc.connect(connection_string_database_copy) as conn:
+            cursor = conn.cursor()
+            try:
+                cursor.execute(
+                    "SELECT ID FROM [Session] WHERE ClassID = ? AND [Date] = ?", 
+                    (int(class_id), session_date)
+                )
+                row = cursor.fetchone()
+
+                if row:
+                    session_id = row[0]
+                else:
+                    cursor.execute(
+                        "INSERT INTO [Session] ([Date], ClassID) OUTPUT INSERTED.ID VALUES (?, ?)",
+                        (session_date, int(class_id))
+                    )
+                    session_id = cursor.fetchone()[0]
+
+                processed_exercise_ids = set()
+
+                for ex_data in exercises:
+                    if isinstance(ex_data, dict):
+                        ex_name = ex_data.get('name', '').strip()
+                        ex_cat = ex_data.get('category', 'General').strip()
+                    else:
+                        ex_name = str(ex_data).strip()
+                        ex_cat = 'General'
+
+                    if not ex_name:
+                        continue
+
+                    cursor.execute("SELECT ID FROM [Exercise] WHERE [Name] = ?", (ex_name,))
+                    ex_row = cursor.fetchone()
+
+                    if ex_row:
+                        exercise_id = ex_row[0]
+                    else:
+                        cursor.execute(
+                            "INSERT INTO [Exercise] ([Name], [Category]) OUTPUT INSERTED.ID VALUES (?, ?)",
+                            (ex_name, ex_cat)
+                        )
+                        exercise_id = cursor.fetchone()[0]
+
+                    if exercise_id not in processed_exercise_ids:
+                        cursor.execute(
+                            "SELECT 1 FROM [Logs] WHERE ExerciseID = ? AND SessionID = ?", 
+                            (exercise_id, session_id)
+                        )
+                        if not cursor.fetchone():
+                            cursor.execute(
+                            "INSERT INTO [Logs] (ExerciseID, SessionID, IsPr) VALUES (?, ?, ?)",
+                            (exercise_id, session_id, 0)
+                        )
+                        processed_exercise_ids.add(exercise_id)
+
+                conn.commit()
+                return {"success": True, "session_id": session_id}
+            except Exception as e:
+                conn.rollback()
+                import traceback
+                traceback.print_exc()
+                return {"error": str(e)}
+
+    def get_class_details(self, class_id):
+        with pyodbc.connect(connection_string_database_copy) as conn:
+            cursor = conn.cursor()
+            query = "SELECT ID, Name FROM [Class] WHERE ID = ?"
+            cursor.execute(query, (class_id,))
+            row = cursor.fetchone()
+            if row:
+                return {"id": row[0], "name": row[1]}
+            return None
+        
+    def get_class_sessions(self, class_id):
+        sessions = {}
+        try:
+            with pyodbc.connect(connection_string_database_copy) as conn:
+                cursor = conn.cursor()
+                query = """
+                    SELECT s.ID, s.[Date], c.Name, e.[Name] as ExName, e.[Category]
+                    FROM [Session] s
+                    LEFT JOIN [Class] c ON s.ClassID = c.ID
+                    LEFT JOIN [Logs] l ON s.ID = l.SessionID
+                    LEFT JOIN [Exercise] e ON l.ExerciseID = e.ID
+                    WHERE s.ClassID = ?
+                """
+                cursor.execute(query, (class_id,))
+                for row in cursor.fetchall():
+                    s_id = row[0]
+                    if s_id not in sessions:
+                        sessions[s_id] = {
+                            "id": s_id,
+                            "date": row[1].isoformat() if hasattr(row[1], 'isoformat') else str(row[1]),
+                            "class_name": row[2],
+                            "exercises": []
+                        }
+                    if row[3]:
+                        sessions[s_id]["exercises"].append({"name": row[3], "category": row[4]})
+        except Exception as e:
+            print(f"SQL Error: {e}")
+            raise e
+        return list(sessions.values())
+
+    def delete_class_session(self, class_id, session_date):
+        try:
+            with pyodbc.connect(connection_string_database_copy) as conn:
+                cursor = conn.cursor()
+                
+                sql_find = "SELECT ID FROM [Session] WHERE ClassID = ? AND [Date] = ?"
+                cursor.execute(sql_find, (int(class_id), session_date))
+                row = cursor.fetchone()
+                
+                if not row:
+                    return {"error": "Session not found"}
+                
+                session_id = row[0]
+                cursor.execute("DELETE FROM [Logs] WHERE SessionID = ?", (session_id,))
+                cursor.execute("DELETE FROM [Session] WHERE ID = ?", (session_id,))
+                
+                conn.commit()
+                return {"success": True}
+
+        except Exception as e:
+            return {"error": str(e)}
+
+    def update_session_date(self, session_id, new_date):
+        try:
+            with pyodbc.connect(connection_string_database_copy) as conn:
+                cursor = conn.cursor()
+                sql = "UPDATE [Session] SET [Date] = ? WHERE ID = ?"
+                cursor.execute(sql, (new_date, session_id))
+                conn.commit()
+                return {"success": True}
+        except Exception as e:
+            print(f"SQL Error in update_session_date: {e}")
+            return {"error": str(e)}
+        
+    def log_exercise_to_session(self, exercise_id, session_id, is_pr=0):
+        try:
+            with pyodbc.connect(connection_string_database_copy) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT INTO [Logs] (ExerciseID, SessionID, IsPr) VALUES (?, ?, ?)",
+                    (int(exercise_id), int(session_id), int(is_pr))
+                )
+                conn.commit()
+                return {"success": True}
+        except Exception as e:
+            return {"error": str(e)}
+        
+    def get_all_sessions_sql(self):
+        try:
+            with pyodbc.connect(connection_string_database_copy) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT ID, ClassID, Date FROM Session")
+                rows = cursor.fetchall()
+                
+                sessions = []
+                for row in rows:
+                    sessions.append({
+                        "id": row[0],
+                        "class_id": row[1],
+                        "date": str(row[2])
+                    })
+                return sessions
+        except Exception as e:
+            print(f"SQL Error: {e}")
+            raise e
+        
+    def create_exercise(self, name, category="General"):
+        try:
+            with pyodbc.connect(connection_string_database_copy) as conn:
+                cursor = conn.cursor()
+                
+                sql = """
+                    INSERT INTO [Exercise] ([Name], [Category]) 
+                    OUTPUT INSERTED.ID 
+                    VALUES (?, ?)
+                """
+                cursor.execute(sql, (name.strip(), category.strip()))
+                
+                new_id = cursor.fetchone()[0]
+                conn.commit()
+                
+                return {
+                    "id": new_id,
+                    "name": name.strip(),
+                    "category": category.strip()
+                }
+        except Exception as e:
+            print(f"SQL Error in create_exercise: {e}")
+            raise e
