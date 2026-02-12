@@ -14,29 +14,29 @@ server = os.getenv("DB_SERVER")
 #database = os.getenv("DB_NAME")
 database_master = 'master'
 database = os.getenv("DB_NAME")
-database_copy2 = 'RoseShreddedNerdscopy2'
+database_copy = 'RoseShreddedNerdscopy'
 username = os.getenv("DB_USERNAME")
 password = os.getenv("DB_PASSWORD")
 driver = '{ODBC Driver 17 for SQL Server}'
 
 connection_string_master = f'DRIVER={driver};SERVER={server};DATABASE={database_master};UID={username};PWD={password};'
 connection_string_database = f'DRIVER={driver};SERVER={server};DATABASE={database};UID={username};PWD={password};'
-connection_string_database_copy2 = f'DRIVER={driver};SERVER={server};DATABASE={database_copy2};UID={username};PWD={password};'
+connection_string_database_copy = f'DRIVER={driver};SERVER={server};DATABASE={database_copy};UID={username};PWD={password};'
 
 def create_db(connection_string):
     with pyodbc.connect(connection_string, autocommit=True) as conn:
         cursor = conn.cursor()
         sql_command = """
-                            CREATE DATABASE [RoseShreddedNerdscopy2]
+                            CREATE DATABASE [RoseShreddedNerdscopy]
                             ON
                                     PRIMARY ( NAME=Data,
-                                    FILENAME='/var/opt/mssql/data/RoseShreddedNerdscopy2.mdf',
+                                    FILENAME='/var/opt/mssql/data/RoseShreddedNerdscopy.mdf',
                                     SIZE=20MB,
                                     MAXSIZE=90MB,
                                     FILEGROWTH=12%)
                             LOG ON
                                     ( NAME=Log,
-                                    FILENAME='/var/opt/mssql/data/RoseShreddedNerdscopy2.ldf',
+                                    FILENAME='/var/opt/mssql/data/RoseShreddedNerdscopy.ldf',
                                     SIZE=10MB,
                                     MAXSIZE=30MB,
                                     FILEGROWTH=17%)
@@ -70,9 +70,9 @@ def destroy_db(connection_string):
         # Note the ALTER DATABASE... SQL Line was found online from Google search Gemini AI results because no other source gave the answer clearly
         # What it essentially does is closes any other existing connections to the database to get rid of error "cannot drop...bc currently in USE"
         sql_command = """
-                          ALTER DATABASE [RoseShreddedNerdscopy2]
+                          ALTER DATABASE [RoseShreddedNerdscopy]
                           SET SINGLE_USER WITH ROLLBACK IMMEDIATE
-                          DROP DATABASE [RoseShreddedNerdscopy2]
+                          DROP DATABASE [RoseShreddedNerdscopy]
                         """
         cursor.execute(sql_command)
         conn.commit()
@@ -665,7 +665,7 @@ def create_stored_procedures(connection_string):
 
 # create_db(connection_string_master)
 # # add_owners(connection_string_master)
-# create_tables(connection_string_database_copy2)
-# seed_data(connection_string_database_copy2)
-# create_stored_procedures(connection_string_database_copy2)
-# destroy_db(connection_string_master)
+# create_tables(connection_string_database_copy)
+# seed_data(connection_string_database_copy)
+# create_stored_procedures(connection_string_database_copy)
+destroy_db(connection_string_master)
