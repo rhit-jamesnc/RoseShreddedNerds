@@ -48,6 +48,48 @@ def add_person(connection_string):
         cursor.execute(sql_script)
         conn.commit()
 
+# Stored procedure to get user by username
+def get_person_by_username(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+                        CREATE PROCEDURE get_Person_by_Username
+                            (
+                                @Username varchar(50)
+                            )
+                        AS
+                        BEGIN
+                            IF @Username IS NULL OR (SELECT COUNT(*) FROM PERSON WHERE Username = @Username) = 0
+                            BEGIN;
+                                THROW 51000, 'Error: No user with the given username exists in the database', 1
+                            END
+                            SELECT * FROM Person WHERE Username = @Username
+                        END
+                     """
+        cursor.execute(sql_script)
+        conn.commit()
+
+# Stored procedure to get user by id
+def get_person_by_id(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+                        CREATE PROCEDURE get_Person_by_ID
+                            (
+                                @ID int
+                            )
+                        AS
+                        BEGIN
+                            IF @ID IS NULL OR (SELECT COUNT(*) FROM PERSON WHERE ID = @ID) = 0
+                            BEGIN;
+                                THROW 51000, 'Error: No user with the user id exists in the database', 1
+                            END
+                            SELECT * FROM Person WHERE ID = @ID
+                        END
+                     """
+        cursor.execute(sql_script)
+        conn.commit()
+
 # Stored procedure to update user information for profile or login features and functionality
 def update_person(connection_string):
     with pyodbc.connect(connection_string) as conn:
@@ -84,6 +126,7 @@ def update_person(connection_string):
                                         PasswordHash = @PasswordHash,
                                         DOB = @DOB,
                                         Weight = @Weight
+                                    WHERE ID = @PersonID
                                  END
 
                                 """
@@ -98,6 +141,11 @@ def add_session(connection_string):
                             CREATE OR ALTER PROCEDURE add_session
                                 (
                                     @Date date = NULL,
+                                    @StartTime TIME(0),
+                                    @EndTime TIME (0),
+                                    @Location varchar(50),
+                                    @Notes varchar(500),
+                                    @Visibility bit = 0,
                                     @StudentID int,
                                     @GeneratedID int OUTPUT
                                 )
@@ -109,7 +157,8 @@ def add_session(connection_string):
                                 END
                                 IF @Date IS NULL SET @Date = CAST(GETDATE() AS DATE)
 
-                                INSERT INTO [Session] (Date, StudentID) VALUES (@Date, @StudentID)
+                                INSERT INTO [Session] (Date, StartTime, EndTime, Location, Notes, Visibility, StudentID) 
+                                VALUES (@Date, @StartTime, @EndTime, @Location, @Notes, @Visibility, @StudentID)
 
                                 SET @GeneratedID = SCOPE_IDENTITY()
                             END
@@ -138,7 +187,7 @@ def add_exercise_info(connection_string):
                                             BEGIN
                                                 IF @Name IS NULL OR @Category IS NULL OR @SessionID IS NULL OR (SELECT COUNT(*) FROM Session WHERE ID = @SessionID) = 0
                                                 BEGIN;
-                                                    THROW '51001', 'Invalid parameters', 1
+                                                    THROW 51001, 'Invalid parameters', 1
                                                 END
 
                                                 INSERT INTO [Exercise] (Name, Category, Duration)
@@ -149,13 +198,99 @@ def add_exercise_info(connection_string):
                                                 INSERT INTO [Logs] (ExerciseID, SessionID, IsPr)
                                                 VALUES (@GeneratedID, @SessionID, @IsPr)
 
-                                                INSERT INTO [Set] (ExericseID, SetNumber, Weight, Reps)
+                                                INSERT INTO [Set] (ExerciseID, SetNumber, Weight, Reps)
                                                 VALUES (@GeneratedID, @SetNumber, @Weight, @Reps)
 
                                             END
                                         """
         cursor.execute(sql_script)
         conn.commit()
+
+def update_exercise_info(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+                        CREATE OR ALTER PROCEDURE update_exercise_info
+                            (
+                                @ExerciseID int,
+                                @SessionID int,
+                                @Name varchar(50),
+                                @Category varchar(50),
+                                @Duration int,
+                                @IsPr bit,
+                                @SetNumber int,
+                                @Weight decimal(5, 2),
+                                @Reps int
+                            )
+                        AS
+                        BEGIN
+                            IF @ExerciseID IS NULL OR @SessionID IS NULL OR (SELECT COUNT(*) FROM Logs WHERE ExerciseID = @ExerciseID AND SessionID = @SessionID) = 0
+                            BEGIN;
+                                THROW 51000, 'Could not find the exercise or session requested', 1
+                            END
+
+                            UPDATE Exercise
+                            SET [Name] = @Name, [Category] = @Category, Duration = @Duration
+                            WHERE ID = @ExerciseID
+
+                            UPDATE [Set]
+                            SET SetNumber = @SetNumber, [Weight] = @Weight, Reps = @Reps
+                            WHERE ExerciseID = @ExerciseID
+
+                            UPDATE [Logs]
+                            SET IsPr = @IsPr
+                            WHERE ExerciseID = @ExerciseID AND SessionID = @SessionID
+                        END 
+                     """
+        cursor.execute(sql_script)
+        conn.commit()
+
+def get_session_info(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+                        CREATE OR ALTER PROCEDURE get_session_info
+                            (
+                                @SessionID int,
+                                @Date date OUTPUT
+
+                            )
+                        AS
+                        BEGIN
+                            IF @SessionID IS NULL OR (SELECT COUNT(*) FROM Session WHERE ID = @SessionID) = 0
+                            BEGIN;
+                                THROW 51000, 'The session you are looking for does not exist in the database', 0
+                            END
+
+                            SELECT e.Name, e.Category, e.Duration, s.SetNumber, s.Weight, s.Reps, IsPr AS PR
+                            FROM Logs
+                            JOIN Exercise e ON Logs.ExerciseID = e.ID
+                            JOIN [Set] s ON e.ID = s.ExerciseID
+                            WHERE SessionID = @SessionID
+
+                            SET @Date = (SELECT [Date] FROM Session WHERE ID = @SessionID)
+
+                        END 
+                     """
+        cursor.execute(sql_script)
+        conn.commit()
+def get_schedule_info(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+                        CREATE OR ALTER PROCEDURE get_schedule_info
+                            (
+                                @NumRows int = 5,
+                                @ID int
+                            )
+                        AS
+                        BEGIN
+                            SELECT TOP(@NumRows) * FROM Session WHERE StudentID = @ID
+                        END
+                     """
+        cursor.execute(sql_script)
+        conn.commit()
+        
 
 def get_student_enrollments(connection_string):
     with pyodbc.connect(connection_string) as conn:

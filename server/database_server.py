@@ -27,16 +27,16 @@ def create_db(connection_string):
     with pyodbc.connect(connection_string, autocommit=True) as conn:
         cursor = conn.cursor()
         sql_command = """
-                            CREATE DATABASE [RoseShreddedNerdscopy]
+                            CREATE DATABASE [RoseShreddedNerdsCopy]
                             ON
                                     PRIMARY ( NAME=Data,
-                                    FILENAME='/var/opt/mssql/data/RoseShreddedNerdscopy.mdf',
+                                    FILENAME='/var/opt/mssql/data/RoseShreddedNerdsCopy.mdf',
                                     SIZE=20MB,
                                     MAXSIZE=90MB,
                                     FILEGROWTH=12%)
                             LOG ON
                                     ( NAME=Log,
-                                    FILENAME='/var/opt/mssql/data/RoseShreddedNerdscopy.ldf',
+                                    FILENAME='/var/opt/mssql/data/RoseShreddedNerdsCopy.ldf',
                                     SIZE=10MB,
                                     MAXSIZE=30MB,
                                     FILEGROWTH=17%)
@@ -69,7 +69,7 @@ def create_tables(connection_string):
                                 Username varchar(50) NOT NULL,
                                 PasswordHash varchar(512) NOT NULL,
                                 DOB date NULL,
-                                [Weight] int NULL
+                                [Weight] int NULL,
                             )
                             CREATE TABLE [Student] (
                                 ID int PRIMARY KEY REFERENCES Person(ID) NOT NULL
@@ -80,6 +80,11 @@ def create_tables(connection_string):
                             CREATE TABLE [Session] (
                                 ID int IDENTITY (1, 1) PRIMARY KEY NOT NULL,
                                 Date date NULL,
+                                StartTime TIME(0) NULL,
+                                EndTime TIME(0) NULL,
+                                Location varchar(50) NULL,
+                                Notes varchar(500) NULL,
+                                Visibility bit,
                                 StudentID int REFERENCES Student(ID) NOT NULL
                             )
                             CREATE TABLE [Class] (
@@ -95,6 +100,7 @@ def create_tables(connection_string):
                                 ID int IDENTITY (1, 1) PRIMARY KEY NOT NULL,
                                 Name varchar(50) NOT NULL,
                                 Category varchar(50) NOT NULL,
+                                Notes varchar(50),
                                 Duration int NULL
                             )
                             CREATE TABLE [Set] (
@@ -179,18 +185,24 @@ def seed_exercises(connection_string):
 def create_stored_procedures(connection_string):
     
     stored_procedures.add_person(connection_string)
+    stored_procedures.get_person_by_username(connection_string)
+    stored_procedures.get_person_by_id(connection_string)
     stored_procedures.update_person(connection_string)
     stored_procedures.add_session(connection_string)
     stored_procedures.add_exercise_info(connection_string)
-    stored_procedures.get_student_enrollments(connection_string)
+    stored_procedures.update_exercise_info(connection_string)
+    stored_procedures.get_session_info(connection_string)
+    stored_procedures.get_schedule_info(connection_string)
+    #stored_procedures.get_student_enrollments(connection_string)
     stored_procedures.add_and_update_pr(connection_string)
     stored_procedures.get_pr_sql(connection_string)
     stored_procedures.get_big3_leaderboard(connection_string)
 
+def create_and_setup_db():
+    create_db(connection_string_master)
+    create_tables(connection_string_database_copy)
+    seed_exercises(connection_string_database_copy)
+    create_stored_procedures(connection_string_database_copy)
 
-
-#create_db(connection_string_master)
-#create_tables(connection_string_database_copy)
-#seed_exercises(connection_string_database_copy)
-#create_stored_procedures(connection_string_database_copy)
+#create_and_setup_db()
 #destroy_db(connection_string_master)

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { Card, Row, Col, Badge } from "react-bootstrap";
+import { Card, Row, Col, Badge, Alert, Button } from "react-bootstrap";
 import { api } from "../api";
 
 export default function Dashboard() {
@@ -10,6 +10,9 @@ export default function Dashboard() {
   const [newClassName, setNewClassName] = useState("");
   const [myClasses, setMyClasses] = useState([]);
   const [enrolledClasses, setEnrolledClasses] = useState([]);
+  const [statusMsg, setStatusMsg] = useState({ type: "", text: "" });
+  const [deletingId, setDeletingId] = useState(null);
+  const [totals, setTotals] = useState({ total_minutes: 0, total_sessions: 0 });
 
   // Here I am loading the current user and some of their recentmost workouts
   useEffect(() => {
@@ -40,14 +43,20 @@ export default function Dashboard() {
         setErr("Could not load your workouts.");
         setWorkouts([]);
       });
+    api("/dashboard/stats")
+      .then((resp) => {
+        if (resp?.totals) setTotals(resp.totals);
+      })
+      .catch(() => setTotals({ total_minutes: 0, total_sessions: 0 }));
   }, []);
 
   useEffect(() => {
-    if (me?.role === "trainer") {
-      api("/trainer/classes").then(resp => {
-        if (resp?.items) setMyClasses(resp.items);
-      });
-    }
+    console.log("Current User for Class Fetch:", me); // Check this in F12 console
+  if (me?.role === "trainer") {
+    api("/trainer-classes").then(resp => {
+      if (resp?.items) setMyClasses(resp.items);
+    });
+  }
   }, [me]);
 
   useEffect(() => {
@@ -80,8 +89,8 @@ export default function Dashboard() {
   // I learnt that useMemo is a React hook which is used for 'memoization'
   // It basically caches a computed value so that React doesn't recompute it every time the component re-renders
   const {
-    totalWorkouts,
-    lastWorkout,
+    //totalWorkouts,
+    //lastWorkout,
     weeklyMinutes,
     weeklyCount,
     weeklyDaysTrained,
@@ -132,7 +141,7 @@ export default function Dashboard() {
 
   const handleCreateClass = async () => {
     if (!newClassName.trim()) {
-      alert("Please enter a class name.");
+      setStatusMsg({ type: "warning", text: "Please enter a class name." });
       return;
     }
 
@@ -143,37 +152,29 @@ export default function Dashboard() {
       });
 
       if (response && !response.error) {
-        alert(`Class "${newClassName}" created successfully!`);
-        setMyClasses([...myClasses, { id: response.class_id, name: newClassName }]);
+        setStatusMsg({ type: "success", text: `Class "${newClassName}" created successfully!` });
+        setMyClasses([...myClasses, { id: response.class_id, name: newClassName }]);        setMyClasses([...myClasses, { id: response.class_id, name: newClassName }]);
         setNewClassName(""); // Clear the input
       } else {
-        alert(response.error || "Failed to create class.");
-      }
+        setStatusMsg({ type: "danger", text: response.error || "Failed to create class." });      }
     } catch (e) {
       console.error(e);
-      alert("An error occurred while creating the class.");
-    }
+      setStatusMsg({ type: "danger", text: "An error occurred while creating the class." });    }
   };
 
-  const handleDeleteClass = async (classId) => {
-    if (!window.confirm("Are you sure you want to delete this class? This will also remove all student enrollments.")) {
-      return;
-    }
-
+  const confirmDeleteClass = async (classId) => {
     try {
-      const response = await api(`/classes/${classId}`, {
-        method: "DELETE",
-      });
-
+      const response = await api(`/classes/${classId}`, { method: "DELETE" });
       if (response && response.success) {
-        alert("Class deleted successfully.");
+        setStatusMsg({ type: "success", text: "Class deleted successfully." });
         setMyClasses(myClasses.filter(c => c.id !== classId));
       } else {
-        alert(response.error || "Failed to delete class.");
+        setStatusMsg({ type: "danger", text: response.error || "Failed to delete class." });
       }
-    } catch (e) {
-      console.error(e);
-      alert("An error occurred.");
+    } catch  {
+      setStatusMsg({ type: "danger", text: "An error occurred during deletion." });
+    } finally {
+      setDeletingId(null); // Reset confirmation state
     }
   };
   
@@ -191,11 +192,17 @@ export default function Dashboard() {
         )}
       </div>
 
-      {err && (
-        <div className="alert alert-danger py-2" role="alert">
-          {err}
-        </div>
+      {statusMsg.text && (
+        <Alert 
+          variant={statusMsg.type} 
+          onClose={() => setStatusMsg({ type: "", text: "" })} 
+          dismissible
+        >
+          {statusMsg.text}
+        </Alert>
       )}
+
+      {err && <Alert variant="danger">{err}</Alert>}
 
       <Row className="mb-3">
 
@@ -227,10 +234,10 @@ export default function Dashboard() {
               <Card.Title as="h5" className="mb-1">All-time sessions</Card.Title>
               <Card.Subtitle className="mb-2 text-muted small">Since you joined ShreddedNerds</Card.Subtitle>
 
-              <div className="display-6 fw-semibold mb-1">{totalWorkouts}</div>
+              <div className="display-6 fw-semibold mb-1">{totals.total_sessions}</div>
 
               <p className="small text-muted mb-2">
-                {totalWorkouts === 0 ? "Log your first workout to start your history." : "Every logged session powers your dashboards and leaderboards."}
+                {totals.total_sessions === 0 ? "Log your first workout to start your history." : "Every logged session powers your dashboards and leaderboards."}
               </p>
 
               {weeklyDaysTrained > 0 && (
@@ -247,26 +254,18 @@ export default function Dashboard() {
         <Col md={4} className="mb-3">
           <Card className="dashboard-card shadow-sm h-100">
             <Card.Body>
-              <Card.Title as="h5" className="mb-1">Last workout</Card.Title>
-              <Card.Subtitle className="mb-2 text-muted small">Let's see a quick recap</Card.Subtitle>
+              <Card.Title as="h5" className="mb-1">All-time minutes</Card.Title>
+              <Card.Subtitle className="mb-2 text-muted small">Total time logged at the SRC</Card.Subtitle>
 
-              {!lastWorkout ? (
-                <p className="small text-muted mb-0"> You haven&apos;t logged a workout yet. Head to{" "}
-                  <strong>Log Workouts</strong> to record your first SRC session.</p>
-              ) : (
-                <>
-                
-                  <div className="fw-semibold mb-1">
-                    {(lastWorkout.date || lastWorkout.day)} · {lastWorkout.duration_minutes} min
-                  </div>
-                  <p className="small text-muted mb-2"> {lastWorkout.notes ? lastWorkout.notes : "No notes added for this workout."} </p>
-                  <p className="small mb-0 text-muted">
-                    Your detailed breakdown is available on the{" "}
-                    <strong>History</strong> page (coming soon) and in the
-                    Workouts section.
-                  </p>
-                </>
-              )}
+              <div className="display-6 fw-semibold mb-1">
+                {totals.total_minutes} <span className="fs-6">min</span>
+              </div>
+
+              <p className="small text-muted mb-0">
+                {totals.total_sessions === 0
+                  ? "No minutes yet — log your first session."
+                  : `Across ${totals.total_sessions} session${totals.total_sessions === 1 ? "" : "s"}.`}
+              </p>
             </Card.Body>
           </Card>
         </Col>
@@ -293,19 +292,32 @@ export default function Dashboard() {
                 </div>
               </Card.Body>
             </Card>
+
             <Card className="mt-3 shadow-sm">
               <Card.Body>
                 <Card.Title>Your Active Classes</Card.Title>
                 <ul className="list-group list-group-flush">
                   {myClasses.map(c => (
-                    <li key={c.id} className="list-group-item d-flex justify-content-between align-items-center">
-                      {c.name} (Session #{c.id})
-                      <button 
-                        className="btn btn-outline-danger btn-sm"
-                        onClick={() => handleDeleteClass(c.id)}
-                      >
-                        Delete
-                      </button>
+                    <li key={c.id} className="list-group-item d-flex justify-content-between align-items-center py-3">
+                      <div>
+                        <span className="fw-bold">{c.name}</span> <span className="text-muted small">#({c.id})</span>
+                      </div>
+                      
+                      {deletingId === c.id ? (
+                        <div className="bg-light p-2 border rounded d-flex align-items-center gap-2">
+                          <span className="small text-danger fw-bold">Delete?</span>
+                          <Button variant="danger" size="sm" onClick={() => confirmDeleteClass(c.id)}>Yes</Button>
+                          <Button variant="secondary" size="sm" onClick={() => setDeletingId(null)}>No</Button>
+                        </div>
+                      ) : (
+                        <Button 
+                          variant="outline-danger" 
+                          size="sm" 
+                          onClick={() => setDeletingId(c.id)}
+                        >
+                          Delete
+                        </Button>
+                      )}
                     </li>
                   ))}
                 </ul>
