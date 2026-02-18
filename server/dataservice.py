@@ -750,15 +750,20 @@ class DataService:
             if not cursor.fetchone():
                 return {"error": "Unauthorized: You do not own this class"}
 
-            cursor.execute("DELETE FROM [HasA] WHERE ClassID = ?", (class_id,))
-            cursor.execute("DELETE FROM [Teaches] WHERE ClassID = ?", (class_id,))
-
             cursor.execute("SELECT ID FROM [Session] WHERE ClassID = ?", (class_id,))
             session_ids = [row[0] for row in cursor.fetchall()]
+
             if session_ids:
                 placeholders = ','.join(['?'] * len(session_ids))
+                
                 cursor.execute(f"DELETE FROM [Logs] WHERE SessionID IN ({placeholders})", session_ids)
-                cursor.execute(f"DELETE FROM [Session] WHERE ClassID = ?", (class_id,))
+                
+                cursor.execute(f"DELETE FROM [Set] WHERE SessionID IN ({placeholders})", session_ids)
+                
+                cursor.execute(f"DELETE FROM [Session] WHERE ID IN ({placeholders})", session_ids)
+
+            cursor.execute("DELETE FROM [HasA] WHERE ClassID = ?", (class_id,))
+            cursor.execute("DELETE FROM [Teaches] WHERE ClassID = ?", (class_id,))
             
             cursor.execute("DELETE FROM [Class] WHERE ID = ?", (class_id,))
             
@@ -964,7 +969,10 @@ class DataService:
                     return {"error": "Session not found"}
                 
                 session_id = row[0]
+                
                 cursor.execute("DELETE FROM [Logs] WHERE SessionID = ?", (session_id,))
+                cursor.execute("DELETE FROM [Set] WHERE SessionID = ?", (session_id,))
+                
                 cursor.execute("DELETE FROM [Session] WHERE ID = ?", (session_id,))
                 
                 conn.commit()

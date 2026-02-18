@@ -357,7 +357,8 @@ def delete_class(class_id):
     try:
         result = ds.delete_class(trainer_sql_id, class_id)
         if "error" in result:
-            return jsonify(result), 403
+            status_code = 403 if "Unauthorized" in result["error"] else 400
+            return jsonify(result), status_code
         return jsonify(result), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
