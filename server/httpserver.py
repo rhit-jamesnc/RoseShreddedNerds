@@ -183,7 +183,7 @@ def update_exercise_set():
     reps = data.get("reps")
 
     if exercise_id is None or set_num is None or session_id is None:
-        return jsonify({"error": "Missing SessionID, ExerciseID, or SetNumber"}), 400
+        return jsonify({"error": "No Session or Exercise Was Edited, Hit 'Close' Instead"}), 400
 
     try:
         ds.trainer_edit_set(session_id, exercise_id, set_num, weight, reps)
