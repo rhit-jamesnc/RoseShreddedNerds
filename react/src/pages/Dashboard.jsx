@@ -18,6 +18,7 @@ export default function Dashboard() {
   const [selectedExercises, setSelectedExercises] = useState([]);
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [confirmDeleteEx, setConfirmDeleteEx] = useState({ exIdx: null });
+  const [viewingSession, setViewingSession] = useState(null);
 
   // Here I am loading the current user and some of their recentmost workouts
   useEffect(() => {
@@ -339,6 +340,33 @@ export default function Dashboard() {
     setSelectedExercises(newExercises);
     setConfirmDeleteEx({ exIdx: null });
   };
+
+  const handleViewSession = (classId, date) => {
+    setStatusMsg({ type: "", text: "" });
+    api(`/sessions/details?date=${date}&classId=${classId}`)
+      .then(data => {
+        // Group the flat rows by Exercise Name for better display
+        const grouped = data.reduce((acc, row) => {
+        if (!acc[row.ExerciseName]) {
+          acc[row.ExerciseName] = { category: row.Category, sets: [] };
+        }
+        if (row.SetNumber) {
+          acc[row.ExerciseName].sets.push({
+            number: row.SetNumber,
+            weight: row.Weight,
+            reps: row.Reps
+          });
+        }
+        return acc;
+      }, {});
+      
+      setViewingSession({ date, exercises: grouped });
+    })
+    .catch(err => {
+      console.error("Session detail error:", err);
+      setStatusMsg({ type: "danger", text: "Failed to load session details" });
+    });
+};
   
   return (
     <div className="dashboard-page py-3">
@@ -765,46 +793,103 @@ export default function Dashboard() {
           <Col md={12}>
             <Card className="shadow-sm border-info">
               <Card.Body>
-                <Card.Title className="text-info">My Enrolled Classes</Card.Title>
-                <Card.Subtitle className="mb-3 text-muted small">
-                  Your current schedule from the SRC
-                </Card.Subtitle>
-                
-                {enrolledClasses.length === 0 ? (
-                  <p className="text-muted italic small">You haven't joined any classes yet.</p>
-                ) : (
+                <div className="d-flex justify-content-between align-items-center mb-3">
+                  <div>
+                    <Card.Title className="text-info mb-0">
+                      {viewingSession ? `Workout Details: ${viewingSession.date}` : "My Enrolled Classes"}
+                    </Card.Title>
+                    {!viewingSession && (
+                      <Card.Subtitle className="text-muted small">
+                        Your current schedule from the SRC
+                      </Card.Subtitle>
+                    )}
+                  </div>
+                  {viewingSession && (
+                    <Button variant="outline-info" size="sm" onClick={() => setViewingSession(null)}>
+                      &larr; Back to Classes
+                    </Button>
+                  )}
+                </div>
+
+                {viewingSession ? (
                   <Row>
-                    {enrolledClasses.map((cls) => (
-                      <Col key={cls.id} md={4} className="mb-3">
-                        <div className="p-3 rounded border border-info bg-light h-100">
-                          <h6 className="mb-1 fw-bold">{cls.name}</h6>
-                          <div className="small text-muted">Trainer: {cls.trainer_name}</div>
-                          <div className="session-history">
-                            <label className="d-block small fw-bold text-muted">Session History:</label>
-                            {cls.session_dates && cls.session_dates !== "Not Set" ? (
-                              <div className="d-flex flex-wrap gap-1">
-                                {cls.session_dates.split(', ').map((date, index) => (
-                                  <Badge key={index} bg="light" text="dark" className="border">
-                                    {date}
-                                  </Badge>
+                    {Object.entries(viewingSession.exercises).length > 0 ? (
+                      Object.entries(viewingSession.exercises).map(([name, data]) => (
+                        <Col key={name} md={6} lg={4} className="mb-3">
+                          <div className="p-3 border rounded bg-white h-100 shadow-sm">
+                            <div className="d-flex justify-content-between align-items-center mb-2">
+                              <h6 className="fw-bold mb-0 text-dark">{name}</h6>
+                              <Badge bg="secondary" className="small">{data.category}</Badge>
+                            </div>
+                            <table className="table table-sm table-borderless mb-0 small">
+                              <thead className="text-muted border-bottom">
+                                <tr>
+                                  <th>Set</th>
+                                  <th>Weight</th>
+                                  <th>Reps</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {data.sets.map((s, i) => (
+                                  <tr key={i}>
+                                    <td>{s.number}</td>
+                                    <td>{s.weight} lbs</td>
+                                    <td>{s.reps}</td>
+                                  </tr>
                                 ))}
-                              </div>
-                            ) : (
-                              <span className="text-muted small italic">No sessions recorded</span>
-                            )}
+                              </tbody>
+                            </table>
                           </div>
-                          <Button 
-                            variant="outline-danger" 
-                            size="sm" 
-                            className="mt-3 w-100"
-                            onClick={() => handleUnenroll(cls.id)}
-                          >
-                            Leave Class
-                          </Button>
-                        </div>
-                      </Col>
-                    ))}
+                        </Col>
+                      ))
+                    ) : (
+                      <Col><p className="text-muted italic small text-center py-4">No exercise data found for this session.</p></Col>
+                    )}
                   </Row>
+                ) : (
+                  enrolledClasses.length === 0 ? (
+                    <p className="text-muted italic small">You haven't joined any classes yet.</p>
+                  ) : (
+                    <Row>
+                      {enrolledClasses.map((cls) => (
+                        <Col key={cls.id} md={4} className="mb-3">
+                          <div className="p-3 rounded border border-info bg-light h-100">
+                            <h6 className="mb-1 fw-bold">{cls.name}</h6>
+                            <div className="small text-muted">Trainer: {cls.trainer_name}</div>
+                            <div className="session-history">
+                              <label className="d-block small fw-bold text-muted">Session History:</label>
+                              {cls.session_dates && cls.session_dates !== "Not Set" ? (
+                                <div className="d-flex flex-wrap gap-1">
+                                  {cls.session_dates.split(', ').map((date, index) => (
+                                    <Badge 
+                                      key={index} 
+                                      bg="light" 
+                                      text="dark" 
+                                      className="border" 
+                                      style={{ cursor: 'pointer' }} 
+                                      onClick={() => handleViewSession(cls.id, date)}
+                                    >
+                                      {date}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-muted small italic">No sessions recorded</span>
+                              )}
+                            </div>
+                            <Button 
+                              variant="outline-danger" 
+                              size="sm" 
+                              className="mt-3 w-100"
+                              onClick={() => handleUnenroll(cls.id)}
+                            >
+                              Leave Class
+                            </Button>
+                          </div>
+                        </Col>
+                      ))}
+                    </Row>
+                  )
                 )}
               </Card.Body>
             </Card>

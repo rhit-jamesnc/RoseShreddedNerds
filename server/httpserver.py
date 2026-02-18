@@ -300,6 +300,29 @@ def create_schedule_slot():
 
     return jsonify({"slot": slot}), 201
 
+@app.route('/api/workouts', methods=['GET'])
+@login_required
+def get_workouts():
+    user = current_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    try:
+        if user.get('role') == 'student':
+            student_sql_id = user.get('sql_id')
+            if not student_sql_id:
+                 return jsonify([]), 200
+                 
+            workouts = ds.get_enrolled_sessions_for_dashboard(student_sql_id)
+            return jsonify(workouts), 200
+            
+        else:
+            return jsonify([]), 200
+
+    except Exception as e:
+        print(f"Error getting workouts: {e}")
+        return jsonify({"error": str(e)}), 500
+
 # ----------------------------------- Classes ---------------------------------------------
 
 @app.get('/api/classes')

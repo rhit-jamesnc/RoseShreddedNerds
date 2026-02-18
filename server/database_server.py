@@ -493,7 +493,12 @@ def create_stored_procedures(connection_string):
             AS
             BEGIN
                 SET NOCOUNT ON;
-                SELECT c.ID, c.Name, p.FName, p.LName
+                SELECT c.ID, c.Name, p.FName, p.LName, 
+                        (
+                            SELECT STRING_AGG(CAST(s.Date AS VARCHAR), ', ') 
+                            FROM [Session] s 
+                            WHERE s.ClassID = c.ID
+                        ) AS session_dates
                 FROM [HasA] h
                 JOIN [Class] c ON h.ClassID = c.ID
                 JOIN [Teaches] t ON c.ID = t.ClassID
@@ -732,5 +737,5 @@ def create_stored_procedures(connection_string):
 # add_owners(connection_string_master)
 # create_tables(connection_string_database_copy2)
 # seed_data(connection_string_database_copy2)
-# create_stored_procedures(connection_string_database_copy2)
+create_stored_procedures(connection_string_database_copy2)
 # destroy_db(connection_string_master)

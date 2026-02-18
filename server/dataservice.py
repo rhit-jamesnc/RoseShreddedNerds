@@ -775,20 +775,17 @@ class DataService:
         try:
             with pyodbc.connect(connection_string_database_copy) as conn:
                 cursor = conn.cursor()
-                # Calling the stored procedure we just defined
                 cursor.execute("{CALL get_StudentEnrollments (?)}", (student_sql_id,))
                 
                 for row in cursor.fetchall():
                     enrolled_classes.append({
                         "id": row[0],
                         "name": row[1],
-                        "trainer_name": f"{row[2]} {row[3]}"
+                        "trainer_name": f"{row[2]} {row[3]}",
+                        "session_dates": row[4] if row[4] else "Not Set"
                     })
         except Exception as e:
-            print(f"SQL Error in get_student_enrollments: {e}")
-            import traceback
-            traceback.print_exc()
-            
+            print(f"Error: {e}")
         return enrolled_classes
     
     def get_trainer_classes(self, trainer_id):
