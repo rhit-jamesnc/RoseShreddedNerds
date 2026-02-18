@@ -17,11 +17,24 @@ database = os.getenv("DB_NAME")
 database_copy = 'RoseShreddedNerdscopy'
 username = os.getenv("DB_USERNAME")
 password = os.getenv("DB_PASSWORD")
-driver = '{ODBC Driver 17 for SQL Server}'
+driver = os.getenv("DB_DRIVER", "{ODBC Driver 18 for SQL Server}")
+encrypt = os.getenv("DB_ENCRYPT", "yes")
+trust_server_cert = os.getenv("DB_TRUST_SERVER_CERTIFICATE", "yes")
 
-connection_string_master = f'DRIVER={driver};SERVER={server};DATABASE={database_master};UID={username};PWD={password};'
-connection_string_database = f'DRIVER={driver};SERVER={server};DATABASE={database};UID={username};PWD={password};'
-connection_string_database_copy = f'DRIVER={driver};SERVER={server};DATABASE={database_copy};UID={username};PWD={password};'
+def build_connection_string(database_name):
+    return (
+        f"DRIVER={driver};"
+        f"SERVER={server};"
+        f"DATABASE={database_name};"
+        f"UID={username};"
+        f"PWD={password};"
+        f"Encrypt={encrypt};"
+        f"TrustServerCertificate={trust_server_cert};"
+    )
+
+connection_string_master = build_connection_string(database_master)
+connection_string_database = build_connection_string(database)
+connection_string_database_copy = build_connection_string(database_copy)
 
 def create_db(connection_string):
     with pyodbc.connect(connection_string, autocommit=True) as conn:
@@ -663,9 +676,19 @@ def create_stored_procedures(connection_string):
         conn.commit()
 
 
+# OLD (commented out): this used to run on import and could drop/recreate the DB
+# without warning. We left it here for reference but keep it disabled now.
+# Destructive stuff should only run when we *explicitly* opt in.
 # create_db(connection_string_master)
-# # add_owners(connection_string_master)
+# add_owners(connection_string_master)
 # create_tables(connection_string_database_copy)
 # seed_data(connection_string_database_copy)
 # create_stored_procedures(connection_string_database_copy)
-destroy_db(connection_string_master)
+# destroy_db(connection_string_master)
+
+if __name__ == "__main__":
+    # Only reset if we run this file directly and set DB_RESET_ON_START=true.
+    # This avoids nuking the DB just by importing the module.
+    reset_on_start = os.getenv("DB_RESET_ON_START", "false").strip().lower() == "true"
+    if reset_on_start:
+        destroy_db(connection_string_master)

@@ -99,25 +99,15 @@ def register():
     try:
         password_hash = generate_password_hash(password)
 
-        if role == "trainer":
-            user = ds.create_user(
-                first_name=first_name,
-                last_name=last_name,
-                username=username,
-                password_hash=password_hash,
-                weight=weight,
-                role=role
-            )
-        else:
-            user = ds.create_user(
-                first_name=first_name,
-                last_name=last_name,
-                username=username,
-                password_hash=password_hash,
-                dob=dob,
-                weight=weight,
-                role=role
-            )
+        user = ds.create_user(
+            first_name=first_name,
+            last_name=last_name,
+            username=username,
+            password_hash=password_hash,
+            dob=dob,
+            weight=weight,
+            role=role
+        )
         session["user_id"] = user["id"]
         session.permanent = True
 
@@ -221,6 +211,10 @@ def list_workouts_campus():
 def big3():
     return jsonify({"items": ds.big3_leaderboard_sql()})
 
+@app.get("/api/leaderboards/exercises")
+def exercise_leaderboards():
+    return jsonify({"items": ds.exercise_leaderboards_sql(["Squat", "Bench Press", "Deadlift"], limit=10)})
+
 
 #pr's
 @app.get("/api/personal-records")
@@ -231,6 +225,16 @@ def personal_records():
     if not sql_id:
         return jsonify({"items": [], "message": "no sql server link for this account"}), 200
     items = ds.get_personal_records_sql(sql_id)
+    return jsonify({"items": items})
+
+@app.get("/api/personal-records/progression")
+@login_required
+def personal_records_progression():
+    user = current_user()
+    sql_id = user.get("sql_id")
+    if not sql_id:
+        return jsonify({"items": [], "message": "no sql server link for this account"}), 200
+    items = ds.get_pr_progression_sql(sql_id)
     return jsonify({"items": items})
 
 

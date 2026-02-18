@@ -21,11 +21,24 @@ database = os.getenv("DB_NAME")
 database_copy = os.getenv("DB_NAME_COPY", "RoseShreddedNerdscopy")
 username = os.getenv("DB_USERNAME")
 password = os.getenv("DB_PASSWORD")
-driver = '{ODBC Driver 17 for SQL Server}'
+driver = os.getenv("DB_DRIVER", "{ODBC Driver 18 for SQL Server}")
+encrypt = os.getenv("DB_ENCRYPT", "yes")
+trust_server_cert = os.getenv("DB_TRUST_SERVER_CERTIFICATE", "yes")
 
-connection_string_master = f'DRIVER={driver};SERVER={server};DATABASE={database_master};UID={username};PWD={password};'
-connection_string_database = f'DRIVER={driver};SERVER={server};DATABASE={database};UID={username};PWD={password};'
-connection_string_database_copy = f'DRIVER={driver};SERVER={server};DATABASE={database_copy};UID={username};PWD={password};'
+def build_connection_string(database_name):
+    return (
+        f"DRIVER={driver};"
+        f"SERVER={server};"
+        f"DATABASE={database_name};"
+        f"UID={username};"
+        f"PWD={password};"
+        f"Encrypt={encrypt};"
+        f"TrustServerCertificate={trust_server_cert};" #this adds trust cert seeting to string
+    )
+
+connection_string_master = build_connection_string(database_master)
+connection_string_database = build_connection_string(database)
+connection_string_database_copy = build_connection_string(database_copy)
 
 # Storing the date and time format in ISO 8601 format with 'Z' suffix for UTC time
 ISO_Z = "%Y-%m-%dT%H:%M:%SZ"
@@ -93,6 +106,7 @@ class DataService:
         If at all, this will be called only once at startup from the Flask server
         """
         self._ensure_roots()
+        self._ensure_pr_history_table_sql()
         if seed_exercises and not self.db.get("exercises"):
             self._set_exercises()
         self.dump()
@@ -144,9 +158,18 @@ class DataService:
         idx = self.db.get("index_users_username_normalization")
         if norm in idx:
             raise ValueError("Username already exists")
+            
+            #the change below might seem confusing and why we needed it so adding comments
         
+        role_norm = (role or "student").strip().lower() #normalize role w default
+        person_type = "Trainer" if role_norm == "trainer" else "Student" #mapping the role to sql person type
+        dob_param = dob if dob else None #this converts empty DOB (the optional one) Noce for sql
+        weight_param = int(weight) if str(weight).strip() else None #this is weight to int or none
+
         with pyodbc.connect(connection_string_database_copy) as conn:
             cursor = conn.cursor()
+
+            #this chunk of code is commented out and will be removed because this is doing manual inserts and now is no longer used
 
             #insert into Person table and get generated id in one statement
             #sql_person = """
@@ -162,8 +185,29 @@ class DataService:
 #insert into student table
             #cursor.execute("INSERT INTO [Student] (ID) VALUES (?)", (person_id,))
             #conn.commit()
-            cursor.execute("{CALL add_person(?, ?, ?, ?, ?, ?, ?)}", first_name, last_name, username, password_hash, dob, weight, role)
-            person_id = int(cursor.fetchone()[0])
+            #cursor.execute("{CALL add_person(?, ?, ?, ?, ?, ?, ?)}", first_name, last_name, username, password_hash, dob, weight, role)
+            #person_id = int(cursor.fetchone()[0])
+
+
+            cursor.execute( #stored procs w norm inpurts
+                "{CALL add_Person(?, ?, ?, ?, ?, ?, ?)}",
+                first_name,
+                last_name,
+                username,
+                password_hash,
+                dob_param,
+                weight_param,
+                person_type,
+            )
+            cursor.execute(
+                "SELECT TOP 1 ID FROM [Person] WHERE [Username] = ? ORDER BY ID DESC", ##this now directly fetches the created person by username
+                username,
+            )
+            row = cursor.fetchone() 
+            if not row or row[0] is None:
+                raise RuntimeError("Failed to create user record in SQL Server")
+            person_id = int(row[0])
+            conn.commit()
 
         user_id = self._next_id("users")
         user = {
@@ -174,7 +218,7 @@ class DataService:
             "username": username.strip(),
             "username_normalization": norm,
             "password_hash": password_hash,
-            "role": "student",
+            "role": role_norm, #replaced the hard coded roles and now using normalized ones
             "is_public": True,
             "unit_pref": "kg",
             "created_at": now_iso(),
@@ -317,13 +361,13 @@ class DataService:
         if not workout or workout["user_id"] != user_id:
             raise KeyError("Workout not found")
         
-        exercise_map = self.db.get("exercises")
+        #exercise_map = self.db.get("exercises") removed because now we validate against sql
         workout_map = self.db.get("workout_exercises")
         new_prs = []
 
         for item in items:
             exercise_id = int(item["exercise_id"])
-            if str(exercise_id) not in exercise_map:
+            if not self._exercise_exists_sql(exercise_id): #added sql based validation so to avoid stale local data
                 raise ValueError("Exercise not found")
             row_id = self._next_id("workout_exercises")
 
@@ -461,6 +505,8 @@ class DataService:
                 if sql_student_id:
                     exercise_map = self.db.get("exercises")
                     exercise_name = exercise_map.get(str(exercise_id), {}).get("name")
+                    if not exercise_name:
+                        exercise_name = self._exercise_name_by_id_sql(exercise_id) #fetch from sql
                     if exercise_name:
                         with pyodbc.connect(connection_string_database_copy) as conn:
                             cursor = conn.cursor()
@@ -468,6 +514,14 @@ class DataService:
                                 "{CALL upsert_PersonalRecord (?, ?, ?, ?)}",
                                 (sql_student_id, exercise_name,
                                  result["best_weight_kg"], result["best_reps"])
+                            )
+                            self._insert_pr_history_row_sql( #inserting pr history row when it is calculated
+                                cursor,
+                                sql_student_id,
+                                exercise_name,
+                                result["best_weight_kg"],
+                                result["best_reps"],
+                                result["best_1rm_kg"],
                             )
                             conn.commit()
             except Exception as e:
@@ -520,6 +574,44 @@ class DataService:
 
 #sql server PR qnd leaderboard queries
 
+    def _ensure_pr_history_table_sql(self): #this is a helpred to create PR hostory table if it is missing
+        try:
+            with pyodbc.connect(connection_string_database_copy) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    IF OBJECT_ID('dbo.PRHistory', 'U') IS NULL
+                    BEGIN
+                        CREATE TABLE dbo.PRHistory (
+                            ID int IDENTITY(1,1) PRIMARY KEY NOT NULL,
+                            StudentID int NOT NULL REFERENCES Student(ID),
+                            ExerciseID int NOT NULL REFERENCES Exercise(ID),
+                            [Weight] decimal(7,2) NOT NULL,
+                            Reps int NOT NULL,
+                            OneRM decimal(10,2) NOT NULL,
+                            RecordedAt datetime2 NOT NULL DEFAULT SYSUTCDATETIME()
+                        );
+                    END
+                    """
+                )
+                conn.commit()
+        except Exception as e:
+            print(f"SQL Error in _ensure_pr_history_table_sql: {e}")
+
+    def _insert_pr_history_row_sql(self, cursor, sql_student_id, exercise_name, best_weight, best_reps, best_1rm): #helper for inserting actual rows
+        cursor.execute("SELECT ID FROM [Exercise] WHERE [Name] = ?", (exercise_name,))
+        ex_row = cursor.fetchone()
+        if not ex_row: #skips if workout like exercise is not found
+            return
+        exercise_id = int(ex_row[0])
+        cursor.execute(
+            """
+            INSERT INTO dbo.PRHistory (StudentID, ExerciseID, [Weight], Reps, OneRM)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (int(sql_student_id), exercise_id, float(best_weight), int(best_reps), float(best_1rm))
+        )
+
     def get_personal_records_sql(self, sql_student_id):
         records = []
         with pyodbc.connect(connection_string_database_copy) as conn:
@@ -536,6 +628,51 @@ class DataService:
                 })
         return records
 
+    def get_pr_progression_sql(self, sql_student_id): #new api to read PR hist
+        items = []
+        self._ensure_pr_history_table_sql()
+        with pyodbc.connect(connection_string_database_copy) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT
+                    e.Name AS ExerciseName,
+                    h.[Weight],
+                    h.Reps,
+                    h.OneRM,
+                    h.RecordedAt
+                FROM dbo.PRHistory h
+                JOIN [Exercise] e ON h.ExerciseID = e.ID
+                WHERE h.StudentID = ?
+                ORDER BY e.Name ASC, h.RecordedAt ASC
+                """,
+                (sql_student_id,),
+            )
+            for row in cursor.fetchall():
+                items.append(
+                    {
+                        "exercise_name": row[0],
+                        "best_weight_kg": float(row[1]),
+                        "best_reps": int(row[2]),
+                        "best_1rm_kg": float(row[3]),
+                        "recorded_at": row[4].isoformat() if row[4] else None,
+                    }
+                )
+        return items
+
+    def _exercise_exists_sql(self, exercise_id): #checke for the existance of the exercise
+        with pyodbc.connect(connection_string_database_copy) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1 FROM [Exercise] WHERE ID = ?", (int(exercise_id),))
+            return cursor.fetchone() is not None
+
+    def _exercise_name_by_id_sql(self, exercise_id):
+        with pyodbc.connect(connection_string_database_copy) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT [Name] FROM [Exercise] WHERE ID = ?", (int(exercise_id),))
+            row = cursor.fetchone()
+            return row[0] if row else None
+
     def big3_leaderboard_sql(self):
         board = []
         with pyodbc.connect(connection_string_database_copy) as conn:
@@ -547,6 +684,45 @@ class DataService:
                     "display_name": f"{row[1]} {row[2][0]}.",
                     "big3_total_kg": round(float(row[3]), 2)
                 })
+        return board
+
+    def exercise_leaderboards_sql(self, exercise_names=None, limit=10):
+        names = exercise_names or ["Squat", "Bench Press", "Deadlift"]
+        board = {}
+        with pyodbc.connect(connection_string_database_copy) as conn:
+            cursor = conn.cursor()
+            for exercise_name in names:
+                cursor.execute(
+                    """
+                    SELECT
+                        p.Username,
+                        p.FName,
+                        p.LName,
+                        (pr.Weight * (1.0 + pr.Reps / 30.0)) AS Best1RM
+                    FROM [PersonalRecord] pr
+                    JOIN [Achieves] a ON pr.ID = a.PersonalRecordID
+                    JOIN [Of] o ON pr.ID = o.PersonalRecordID
+                    JOIN [Exercise] e ON o.ExerciseID = e.ID
+                    JOIN [Student] s ON a.StudentID = s.ID
+                    JOIN [Person] p ON s.ID = p.ID
+                    WHERE e.Name = ?
+                    ORDER BY Best1RM DESC, p.Username ASC
+                    """,
+                    (exercise_name,),
+                )
+                rows = []
+                for idx, row in enumerate(cursor.fetchall(), start=1):
+                    if idx > limit:
+                        break
+                    rows.append(
+                        {
+                            "rank": idx,
+                            "username": row[0],
+                            "display_name": f"{row[1]} {row[2][0]}.",
+                            "best_1rm_kg": round(float(row[3]), 2),
+                        }
+                    )
+                board[exercise_name] = rows
         return board
 
     def list_all_workouts(self):
