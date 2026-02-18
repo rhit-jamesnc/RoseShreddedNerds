@@ -104,6 +104,7 @@ def register():
                 first_name=first_name,
                 last_name=last_name,
                 username=username,
+                dob=dob,
                 password_hash=password_hash,
                 weight=weight,
                 role=role
@@ -164,6 +165,31 @@ def auth_status():
 @app.get("/api/exercises")
 def exercises_list():
     return jsonify(ds.list_exercises())
+
+# ----------------------------------- Sets ---------------------------------------------
+
+@app.post("/api/sets")
+@login_required
+def update_exercise_set():
+    error = require_json()
+    if error:
+        return error
+    
+    data = request.get_json()
+    session_id = data.get("SessionID")
+    exercise_id = data.get("ExerciseID")
+    set_num = data.get("SetNumber")
+    weight = data.get("weight")
+    reps = data.get("reps")
+
+    if exercise_id is None or set_num is None or session_id is None:
+        return jsonify({"error": "Missing SessionID, ExerciseID, or SetNumber"}), 400
+
+    try:
+        ds.trainer_edit_set(session_id, exercise_id, set_num, weight, reps)
+        return jsonify({"success": True}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 #-------------------------------Workouts (my core value-add feature path)---------------------
 @app.post("/api/workouts")
@@ -279,6 +305,8 @@ def create_schedule_slot():
 @app.get('/api/classes')
 @login_required
 def get_all_classes():
+    user = current_user()
+    print(user.get("role"))
     try:
         classes = ds.get_classes()
         return jsonify(classes), 200
@@ -509,7 +537,7 @@ def create_exercise_log():
 
 @app.post("/api/exercises")
 @login_required
-def api_create_exercise():
+def create_exercise():
     error = require_json()
     if error: return error
     
@@ -523,12 +551,63 @@ def api_create_exercise():
     new_ex = ds.create_exercise(name, category)
     return jsonify(new_ex), 201
 
+@app.route("/api/sessions/<int:session_id>/exercises/<int:exercise_id>", methods=["DELETE"])
+@login_required
+def delete_session_exercise(session_id, exercise_id):
+    user = current_user()
+    
+    if user.get("role") != "trainer":
+        return jsonify({"error": "Only trainers can modify session exercises"}), 403
+
+    try:
+        result = ds.delete_exercise_from_session(session_id, exercise_id)
+        
+        if "error" in result:
+            return jsonify(result), 404
+            
+        return jsonify(result), 200
+    except Exception as e:
+        print(f"DELETE ERROR: {e}")
+        return jsonify({"error": str(e)}), 500
+    
+@app.route("/api/sessions/<int:session_id>/content", methods=["GET"])
+@login_required
+def get_session_content(session_id):
+    try:
+        content_dict = ds.get_session_content(session_id)
+        content_list = []
+        for name, data in content_dict.items():
+            content_list.append({
+                "name": name,
+                "category": data["category"],
+                "is_pr": data["is_pr"],
+                "sets": data["sets"]
+            })
+            
+        return jsonify(content_list), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
+@app.route('/api/sessions/details', methods=['GET'])
+@login_required
+def get_session_details():
+    date_str = request.args.get('date')
+    class_id = request.args.get('classId')
+    
+    if not date_str or not class_id:
+        return jsonify({"error": "Missing date or classId"}), 400
+
+    try:
+        details = ds.get_session_details_by_date(date_str, class_id)
+        return jsonify(details), 200
+    except Exception as e:
+        print(f"Error fetching session details: {e}")
+        return jsonify({"error": str(e)}), 500
+
 # ----------------------------------- Health ---------------------------------------------
 @app.get("/api/health")
 def health():
     return jsonify({"ok": True, "time": dataservice.now_iso()})
-
-
 
 # -------------------------------------Main----------------------------------------------
 if __name__ == "__main__":

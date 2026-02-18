@@ -16,8 +16,8 @@ export default function Dashboard() {
   const [deletingSession, setDeletingSession] = useState({ classId: null, date: null });
   const [availableExercises, setAvailableExercises] = useState([]);
   const [selectedExercises, setSelectedExercises] = useState([]);
-  const [exerciseSearch, setExerciseSearch] = useState("");
   const [currentSessionId, setCurrentSessionId] = useState(null);
+  const [confirmDeleteEx, setConfirmDeleteEx] = useState({ exIdx: null });
 
   // Here I am loading the current user and some of their recentmost workouts
   useEffect(() => {
@@ -204,52 +204,52 @@ export default function Dashboard() {
   };
 
   const handleSaveSession = async (classId) => {
-    if (!editDate) {
-      setStatusMsg({ type: "warning", text: "Please select a date." });
-      return;
-    }
-
     try {
-      const exerciseNames = selectedExercises.map(ex => ex.name);
-
-      const response = await api(`/classes/${classId}/update-session`, {
-        method: "POST",
+      const sessionResp = await api(`/classes/${classId}/update-session`, {
+        method: 'POST',
         body: { 
-          class_id: classId,
           session_date: editDate,
-          exercises: exerciseNames
-        },
+          exercises: selectedExercises
+        }
       });
 
-      if (response && !response.error) {
-        setMyClasses(prev => prev.map(cls => {
-          if (cls.id === classId) {
-            const updatedDates = cls.session_dates && cls.session_dates !== "Not Set" 
-              ? (cls.session_dates.includes(editDate) ? cls.session_dates : `${cls.session_dates}, ${editDate}`)
-              : editDate;
+      const realSessionId = sessionResp.session_id;
 
-            return { 
-              ...cls, 
-              session_dates: updatedDates,
-              exercises: exerciseNames.join(", ") 
-            };
+      const allSetPromises = selectedExercises.flatMap((ex) => {
+        return ex.sets.map((set, index) => {
+          return api('/sets', {
+            method: 'POST',
+            body: {
+              SessionID: realSessionId,
+              ExerciseID: ex.id,
+              SetNumber: set.setNumber || (index + 1),
+              weight: parseFloat(set.weight) || 0,
+              reps: parseInt(set.reps) || 0
+            }
+          });
+        });
+      });
+
+      await Promise.all(allSetPromises);
+
+      setMyClasses(prev => prev.map(cls => {
+        if (cls.id === classId) {
+          const currentDates = cls.session_dates && cls.session_dates !== "Not Set" 
+            ? cls.session_dates.split(", ") 
+            : [];
+          
+          if (!currentDates.includes(editDate)) {
+            const updatedDates = [...currentDates, editDate].sort().join(", ");
+            return { ...cls, session_dates: updatedDates };
           }
-          return cls;
-        }));
-        
-        setSelectedExercises([]);
-        setEditingId(null);
-        setEditDate("");
-        setStatusMsg({ type: "success", text: "Session added!" });
+        }
+        return cls;
+      }));
 
-        const resp = await api("/trainer-classes");
-        if (resp?.items) setMyClasses(resp.items);
-      } else {
-        setStatusMsg({ type: "danger", text: response.error || "Update failed." });
-      }
+      setStatusMsg({ type: "success", text: "Session saved!" });
+      setEditingId(null);
     } catch (e) {
-      console.log(e);
-      setStatusMsg({ type: "danger", text: "A network error occurred." });
+      setStatusMsg({ type: "danger", text: e.message });
     }
   };
 
@@ -282,46 +282,62 @@ export default function Dashboard() {
     }
   };
 
-  const handleAddExercise = async (exerciseName) => {
-    if (!exerciseName.trim() || !editingId) {
-      console.error("Missing exercise name or active session ID");
-      return;
-    }
-
-    try {
-      let exercise = availableExercises.find(
-        (ex) => ex.name.toLowerCase() === exerciseName.toLowerCase().trim()
-      );
-
-      if (!exercise) {
-        exercise = await api('/exercises', {
-          method: 'POST',
-          body: { name: exerciseName.trim(), category: 'strength' }
-        });
-        setAvailableExercises(prev => [...prev, exercise]);
-      }
-
-      await api('/logs', {
-        method: 'POST',
-        body: {
-          exercise_id: exercise.id,
-          session_id: currentSessionId, 
-          is_pr: 0 
-        }
-      });
-
-      setSelectedExercises(prev => [
-        ...prev, 
-        { ...exercise, sets: 0, reps: 0, weight: 0 }
-      ]);
-      
-    } catch (error) {
-      console.error("Failed to log exercise:", error);
-    }
+  const addSetToExercise = (exIdx) => {
+    const newExercises = [...selectedExercises];
+    const currentSets = newExercises[exIdx].sets || [];
+    
+    const newSet = {
+      setNumber: currentSets.length + 1,
+      weight: 0,
+      reps: 0
+    };
+    
+    newExercises[exIdx].sets = [...currentSets, newSet];
+    setSelectedExercises(newExercises);
   };
 
-  const handleRemoveExercise = (index) => {
-    setSelectedExercises(selectedExercises.filter((_, i) => i !== index));
+  const updateSetData = (exIdx, setIdx, field, value) => {
+    const newExercises = [...selectedExercises];
+    let formattedValue = value;
+    if (value !== "") {
+      formattedValue = field === 'weight' ? parseFloat(value) : parseInt(value);
+    }
+
+    newExercises[exIdx].sets[setIdx][field] = formattedValue;
+    setSelectedExercises(newExercises);
+  };
+
+  const removeSet = (exIdx, setIdx) => {
+    const newExercises = [...selectedExercises];
+    newExercises[exIdx].sets = newExercises[exIdx].sets
+      .filter((_, i) => i !== setIdx)
+      .map((set, i) => ({ ...set, setNumber: i + 1 }));
+    setSelectedExercises(newExercises);
+  };
+
+  const removeExercise = async (exIdx, sessionId, exerciseId) => {
+    if (sessionId && exerciseId) {
+      try {
+        const response = await api(`/sessions/${sessionId}/exercises/${exerciseId}`, { 
+          method: 'DELETE' 
+        });
+
+        if (response && response.error) {
+          setStatusMsg({ type: "danger", text: response.error });
+          return;
+        }
+
+        setStatusMsg({ type: "success", text: "Exercise removed from database." });
+      } catch (e) {
+        console.error("Delete error:", e);
+        setStatusMsg({ type: "danger", text: "Server error: Could not delete exercise." });
+        return;
+      }
+    }
+
+    const newExercises = selectedExercises.filter((_, i) => i !== exIdx);
+    setSelectedExercises(newExercises);
+    setConfirmDeleteEx({ exIdx: null });
   };
   
   return (
@@ -452,174 +468,291 @@ export default function Dashboard() {
                 <Card.Title>Your Active Classes</Card.Title>
                 <ul className="list-group list-group-flush">
                   {myClasses.map((c) => (
-  <li key={c.id} className="list-group-item py-3">
-    <div className="d-flex justify-content-between align-items-start">
-      <div className="flex-grow-1">
-        <span className="fw-bold fs-5">{c.name}</span>
-        
-        {/* Session History Section */}
-        <div className="text-muted small mt-2">
-          <label className="fw-bold d-block mb-1">Session History:</label>
-          <div className="d-flex flex-column gap-2 mt-1">
-  {c.session_dates && c.session_dates !== "Not Set" ? (
-    c.session_dates.split(", ").map((date, index) => (
-      /* Changed to d-inline-block and added a max-width to keep them small */
-      <div key={index} className="border rounded p-2 bg-white shadow-sm d-inline-block" style={{ minWidth: '200px', width: 'fit-content' }}>
-        <div className="d-flex justify-content-between align-items-center gap-3">
-          {/* Left Side: Date */}
-          <Badge bg="info" className="px-2 py-1" style={{ fontSize: '0.75rem' }}>{date}</Badge>
-          
-          {/* Right Side: Buttons */}
-          <div className="d-flex align-items-center gap-2">
-            {deletingSession.classId === c.id && deletingSession.date === date ? (
-              <div className="d-flex align-items-center gap-1">
-                <Button variant="danger" size="sm" className="py-0 px-1" style={{ fontSize: '0.65rem' }} onClick={() => handleDeleteSession(c.id, date)}>Yes</Button>
-                <Button variant="secondary" size="sm" className="py-0 px-1" style={{ fontSize: '0.65rem' }} onClick={() => setDeletingSession({ classId: null, date: null })}>No</Button>
-              </div>
-            ) : (
-              <>
-                <Button 
-                  variant="link" 
-                  className="p-0 text-decoration-none text-muted d-flex align-items-center" 
-                  onClick={() => {
-                    setEditingId(c.id);
-                    setEditDate(date);
-                  }}
-                >
-                  <i className="bi bi-pencil-square me-1" style={{ fontSize: '0.8rem' }}></i>
-                  <span style={{ fontSize: '0.75rem' }}>Edit</span>
-                </Button>
-                
-                <Button 
-                  variant="link" 
-                  className="p-0 text-decoration-none text-danger d-flex align-items-center" 
-                  onClick={() => setDeletingSession({ classId: c.id, date: date })}
-                >
-                  <i className="bi bi-trash me-1" style={{ fontSize: '0.8rem' }}></i>
-                  <span style={{ fontSize: '0.75rem' }}>Delete</span>
-                </Button>
-              </>
-            )}
-          </div>
-        </div>
+                    <li key={c.id} className="list-group-item py-3">
+                      <div className="d-flex justify-content-between align-items-start">
+                        <div className="flex-grow-1">
+                          <span className="fw-bold fs-5">{c.name}</span>
+                          
+                          {/* Session History Section */}
+                          <div className="text-muted small mt-2">
+                            <label className="fw-bold d-block mb-1">Session History:</label>
+                            <div className="d-flex flex-column gap-2 mt-1">
+                              {c.session_dates && c.session_dates !== "Not Set" ? (
+                                c.session_dates.split(", ").map((date, index) => (
+                                  /* Changed to d-inline-block and added a max-width to keep them small */
+                                  <div key={index} className="border rounded p-2 bg-white shadow-sm d-inline-block" style={{ minWidth: '200px', width: 'fit-content' }}>
+                                    <div className="d-flex justify-content-between align-items-center gap-3">
+                                      {/* Left Side: Date */}
+                                      <Badge bg="info" className="px-2 py-1" style={{ fontSize: '0.75rem' }}>{date}</Badge>
+                                      
+                                      {/* Right Side: Buttons */}
+                                      <div className="d-flex align-items-center gap-2">
+                                        {deletingSession.classId === c.id && deletingSession.date === date ? (
+                                          <div className="d-flex align-items-center gap-1">
+                                            <Button variant="danger" size="sm" className="py-0 px-1" style={{ fontSize: '0.65rem' }} onClick={() => handleDeleteSession(c.id, date)}>Yes</Button>
+                                            <Button variant="secondary" size="sm" className="py-0 px-1" style={{ fontSize: '0.65rem' }} onClick={() => setDeletingSession({ classId: null, date: null })}>No</Button>
+                                          </div>
+                                        ) : (
+                                          <>
+                                            <Button 
+                                              variant="link" 
+                                              className="p-0 text-decoration-none text-muted d-flex align-items-center" 
+                                              onClick={async () => {
+                                                const targetId = c.id;
+                                                const targetDate = date;
 
-        {/* Exercises Text - only shows if exists, kept small */}
-        {c.exercises && (
-          <div className="mt-1 text-dark pt-1 border-top" style={{ fontSize: '0.75rem', fontStyle: 'italic' }}>
-             {c.exercises}
-          </div>
-        )}
-      </div>
-    ))
-  ) : (
-    <Badge bg="secondary">No Sessions</Badge>
-  )}
-</div>
-        </div>
-      </div>
+                                                setEditingId(targetId);
+                                                setEditDate(targetDate);
+                                                setSelectedExercises([]);
 
-      {/* Main Class Actions (The buttons that were missing/squished) */}
-      <div className="d-flex gap-2 ms-3">
-        <Button 
-          variant="outline-secondary" 
-          size="sm" 
-          onClick={() => {
-            if (editingId === c.id) {
-              setEditingId(null);
-              setEditDate("");
-            } else {
-              setEditingId(c.id);
-              setEditDate("");
-            }
-          }}
-        >
-          {editingId === c.id ? "Close" : "Add Session"}
-        </Button>
+                                                try {
+                                                  const response = await api(`/sessions/details?date=${targetDate}&classId=${targetId}`);
+                                                  if (response && Array.isArray(response)) {
+                                                      const grouped = response.reduce((acc, row) => {
+                                                          let ex = acc.find(e => e.name === row.ExerciseName);
+                                                          if (!ex) {
+                                                              ex = { name: row.ExerciseName, category: row.Category, sets: [] };
+                                                              acc.push(ex);
+                                                          }
+                                                          if (row.SetNumber !== null) {
+                                                              ex.sets.push({
+                                                                  setNumber: row.SetNumber,
+                                                                  weight: row.Weight,
+                                                                  reps: row.Reps
+                                                              });
+                                                          }
+                                                          return acc;
+                                                      }, []);
+                                                      setSelectedExercises(grouped);
+                                                  }
+                                                } catch (err) {
+                                                  console.error("Failed to load session details", err);
+                                                }
+                                              }}
+                                            >
+                                              <i className="bi bi-pencil-square me-1"></i>
+                                              <span>Edit</span>
+                                            </Button>
+                                            
+                                            <Button 
+                                              variant="link" 
+                                              className="p-0 text-decoration-none text-danger d-flex align-items-center" 
+                                              onClick={() => setDeletingSession({ classId: c.id, date: date })}
+                                            >
+                                              <i className="bi bi-trash me-1" style={{ fontSize: '0.8rem' }}></i>
+                                              <span style={{ fontSize: '0.75rem' }}>Delete</span>
+                                            </Button>
+                                          </>
+                                        )}
+                                      </div>
+                                    </div>
 
-        {deletingId === c.id ? (
-          <div className="bg-light p-1 border rounded d-flex gap-1 align-items-center">
-            <span className="small text-danger fw-bold px-1">Class?</span>
-            <Button variant="danger" size="sm" onClick={() => confirmDeleteClass(c.id)}>Yes</Button>
-            <Button variant="secondary" size="sm" onClick={() => setDeletingId(null)}>No</Button>
-          </div>
-        ) : (
-          <Button variant="outline-danger" size="sm" onClick={() => setDeletingId(c.id)}>
-            Delete Class
-          </Button>
-        )}
-      </div>
-    </div>
+                                    {/* Exercises Text - only shows if exists, kept small */}
+                                    {c.exercises && (
+                                      <div className="mt-1 text-dark pt-1 border-top" style={{ fontSize: '0.75rem', fontStyle: 'italic' }}>
+                                        {c.exercises}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))
+                              ) : (
+                                <Badge bg="secondary">No Sessions</Badge>
+                              )}
+                            </div>
+                          </div>
+                        </div>
 
-    {/* The Edit Panel */}
-    {editingId === c.id && (
-      <div className="mt-3 p-3 border rounded bg-light">
-        <h6 className="small fw-bold text-uppercase text-muted">Update Session Details</h6>
-        <Row className="g-2">
-          <Col md={4}>
-            <label className="small fw-bold">Session Date</label>
-            <input type="date" className="form-control form-control-sm" value={editDate} onChange={(e) => setEditDate(e.target.value)} />
-          </Col>
-          <Col md={8}>
-            <label className="small fw-bold">Exercises for this Session</label>
-            
-            <div className="d-flex flex-wrap gap-1 mb-2">
-              {selectedExercises.map((ex, idx) => (
-                <Badge key={idx} bg="primary" className="d-flex align-items-center gap-2">
-                  {ex.name}
-                  <i 
-                    className="bi bi-x-circle-fill cursor-pointer" 
-                    onClick={() => handleRemoveExercise(idx)}
-                    style={{ cursor: 'pointer' }}
-                  ></i>
-                </Badge>
-              ))}
-              {selectedExercises.length === 0 && (
-                <span className="text-muted small italic">No exercises added yet.</span>
-              )}
-            </div>
+                        {/* Main Class Actions (The buttons that were missing/squished) */}
+                        <div className="d-flex gap-2 ms-3">
+                          <Button 
+                            variant="outline-secondary" 
+                            size="sm" 
+                            onClick={() => {
+                              if (editingId === c.id) {
+                                setEditingId(null);
+                                setEditDate("");
+                                setSelectedExercises([]);
+                              } else {
+                                setEditingId(c.id);
+                                setEditDate("");
+                                setSelectedExercises([]);
+                              }
+                            }}
+                          >
+                            {editingId === c.id ? "Close" : "Add Session"}
+                          </Button>
 
-            <div className="input-group input-group-sm">
-  <input 
-    type="text" 
-    className="form-control" 
-    placeholder="Search or type new exercise (e.g. Deadlift)"
-    list="exerciseOptions"
-    value={exerciseSearch} // Bind to state
-    onChange={(e) => setExerciseSearch(e.target.value)} // Update state
-    onKeyDown={(e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        handleAddExercise(exerciseSearch);
-        setExerciseSearch("");
-      }
-    }}
-  />
-  <datalist id="exerciseOptions">
-    {availableExercises.map((ex) => (
-      <option key={ex.id} value={ex.name} />
-    ))}
-  </datalist>
-  <Button 
-    variant="outline-primary" 
-    onClick={() => {
-      handleAddExercise(exerciseSearch);
-      setExerciseSearch("");
-    }}
-  >
-    Add
-  </Button>
-</div>
-          </Col>
-        </Row>
-        <div className="mt-2 text-end">
-          <Button variant="success" size="sm" onClick={() => handleSaveSession(c.id)}>
-            Save Session Changes
-          </Button>
-        </div>
-      </div>
-    )}
-  </li>
-))}
+                          {deletingId === c.id ? (
+                            <div className="bg-light p-1 border rounded d-flex gap-1 align-items-center">
+                              <span className="small text-danger fw-bold px-1">Class?</span>
+                              <Button variant="danger" size="sm" onClick={() => confirmDeleteClass(c.id)}>Yes</Button>
+                              <Button variant="secondary" size="sm" onClick={() => setDeletingId(null)}>No</Button>
+                            </div>
+                          ) : (
+                            <Button variant="outline-danger" size="sm" onClick={() => setDeletingId(c.id)}>
+                              Delete Class
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* The Edit Panel */}
+                      {editingId === c.id && (
+                        <div className="mt-3 p-3 border rounded bg-light shadow-sm">
+                          <h6 className="small fw-bold text-uppercase text-muted mb-3 border-bottom pb-2">
+                            Update Session Details
+                          </h6>
+                          <Row className="g-3">
+                            <Col md={4}>
+                              <div className="form-group">
+                                <label className="small fw-bold mb-1 d-block">Session Date</label>
+                                <input 
+                                  type="date" 
+                                  className="form-control form-control-sm" 
+                                  value={editDate} 
+                                  onChange={(e) => setEditDate(e.target.value)} 
+                                />
+                              </div>
+                            </Col>
+
+                            <div className="mb-3 p-2 border rounded bg-white">
+                              <label className="small fw-bold mb-1 d-block text-primary">Add New Exercise to Session</label>
+                              <div className="d-flex gap-2">
+                                <select 
+                                  className="form-select form-select-sm"
+                                  onChange={(e) => {
+                                    const exId = parseInt(e.target.value);
+                                    if (!exId) return;
+                                    const exObj = availableExercises.find(a => a.id === exId);
+                                    if (exObj) {
+                                      setSelectedExercises([...selectedExercises, { 
+                                        id: exObj.id, 
+                                        name: exObj.name, 
+                                        sets: [{ setNumber: 1, weight: 0, reps: 0 }] 
+                                      }]);
+                                    }
+                                    e.target.value = "";
+                                  }}
+                                >
+                                  <option value="">-- Select Exercise to Add --</option>
+                                  {availableExercises
+                                    .filter(a => !selectedExercises.some(se => se.id === a.id)) // Hide already added
+                                    .map(a => (
+                                      <option key={a.id} value={a.id}>{a.name}</option>
+                                    ))
+                                  }
+                                </select>
+                              </div>
+                            </div>
+                            
+                            <Col md={8}>
+                              <label className="small fw-bold mb-1 d-block">Exercises in this Session</label>
+                              <div className="exercise-edit-list">
+                                {selectedExercises.map((ex, exIdx) => (
+                                  <div key={ex.id || exIdx} className="border rounded p-3 mb-3 bg-white shadow-sm">
+                                    <div className="d-flex justify-content-between align-items-center border-bottom pb-2 mb-3">
+                                      <div>
+                                        <h5 className="h6 mb-0 fw-bold text-primary">{ex.name}</h5>
+                                      </div>
+                                      <div className="d-flex align-items-center">
+                                        {confirmDeleteEx.exIdx === exIdx ? (
+                                          <div className="bg-light p-1 border rounded d-flex gap-1 align-items-center">
+                                            <span className="small text-danger fw-bold px-1">Remove all sets?</span>
+                                            <Button 
+                                              variant="danger" 
+                                              size="sm" 
+                                              onClick={() => removeExercise(exIdx, currentSessionId, ex.id)}
+                                            >
+                                              Yes
+                                            </Button>
+                                            <Button 
+                                              variant="secondary" 
+                                              size="sm" 
+                                              onClick={() => setConfirmDeleteEx({ exIdx: null })}
+                                            >
+                                              No
+                                            </Button>
+                                          </div>
+                                        ) : (
+                                          <Button 
+                                            variant="outline-danger" 
+                                            size="sm" 
+                                            onClick={() => setConfirmDeleteEx({ exIdx: exIdx })}
+                                          >
+                                            <i className="bi bi-trash me-1"></i>
+                                            Remove
+                                          </Button>
+                                        )}
+                                      </div>
+                                    </div>
+                                    
+                                    {ex.sets.map((set, setIdx) => (
+                                      <Row key={setIdx} className="mb-3 align-items-end g-2">
+                                        <Col xs={2}>
+                                          <label className="small text-muted d-block mb-1">Set</label>
+                                          <input 
+                                            type="text" 
+                                            readOnly 
+                                            className="form-control form-control-sm bg-light text-center fw-bold" 
+                                            value={set.setNumber} 
+                                          />
+                                        </Col>
+                                        <Col xs={4}>
+                                          <label className="small text-muted d-block mb-1">Weight (kg/lbs)</label>
+                                          <input 
+                                            type="number" 
+                                            className="form-control form-control-sm" 
+                                            placeholder="0"
+                                            value={set.weight}
+                                            onChange={(e) => updateSetData(exIdx, setIdx, 'weight', e.target.value)}
+                                          />
+                                        </Col>
+                                        <Col xs={4}>
+                                          <label className="small text-muted d-block mb-1">Reps</label>
+                                          <input 
+                                            type="number" 
+                                            className="form-control form-control-sm" 
+                                            placeholder="0"
+                                            value={set.reps}
+                                            onChange={(e) => updateSetData(exIdx, setIdx, 'reps', e.target.value)}
+                                          />
+                                        </Col>
+                                        <Col xs={2}>
+                                          <Button 
+                                            variant="outline-danger" 
+                                            size="sm" 
+                                            className="w-100" 
+                                            onClick={() => removeSet(exIdx, setIdx)}
+                                          >
+                                            &times;
+                                          </Button>
+                                        </Col>
+                                      </Row>
+                                    ))}
+                                    
+                                    <Button 
+                                      variant="outline-primary" 
+                                      size="sm" 
+                                      className="mt-1"
+                                      onClick={() => addSetToExercise(exIdx)}
+                                    >
+                                      + Add Set
+                                    </Button>
+                                  </div>
+                                ))}
+                              </div>
+                            </Col>
+                          </Row>
+                          
+                          <div className="mt-3 pt-3 border-top text-end">
+                            <Button variant="success" size="sm" onClick={() => handleSaveSession(c.id)}>
+                              Save Session Changes
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </li>
+                  ))}
                 </ul>
               </Card.Body>
             </Card>

@@ -14,29 +14,29 @@ server = os.getenv("DB_SERVER")
 #database = os.getenv("DB_NAME")
 database_master = 'master'
 database = os.getenv("DB_NAME")
-database_copy = 'RoseShreddedNerdscopy'
+database_copy2 = 'RoseShreddedNerdscopy2'
 username = os.getenv("DB_USERNAME")
 password = os.getenv("DB_PASSWORD")
 driver = '{ODBC Driver 17 for SQL Server}'
 
 connection_string_master = f'DRIVER={driver};SERVER={server};DATABASE={database_master};UID={username};PWD={password};'
 connection_string_database = f'DRIVER={driver};SERVER={server};DATABASE={database};UID={username};PWD={password};'
-connection_string_database_copy = f'DRIVER={driver};SERVER={server};DATABASE={database_copy};UID={username};PWD={password};'
+connection_string_database_copy2 = f'DRIVER={driver};SERVER={server};DATABASE={database_copy2};UID={username};PWD={password};'
 
 def create_db(connection_string):
     with pyodbc.connect(connection_string, autocommit=True) as conn:
         cursor = conn.cursor()
         sql_command = """
-                            CREATE DATABASE [RoseShreddedNerdscopy]
+                            CREATE DATABASE [RoseShreddedNerdscopy2]
                             ON
                                     PRIMARY ( NAME=Data,
-                                    FILENAME='/var/opt/mssql/data/RoseShreddedNerdscopy.mdf',
+                                    FILENAME='/var/opt/mssql/data/RoseShreddedNerdscopy2.mdf',
                                     SIZE=20MB,
                                     MAXSIZE=90MB,
                                     FILEGROWTH=12%)
                             LOG ON
                                     ( NAME=Log,
-                                    FILENAME='/var/opt/mssql/data/RoseShreddedNerdscopy.ldf',
+                                    FILENAME='/var/opt/mssql/data/RoseShreddedNerdscopy2.ldf',
                                     SIZE=10MB,
                                     MAXSIZE=30MB,
                                     FILEGROWTH=17%)
@@ -70,9 +70,9 @@ def destroy_db(connection_string):
         # Note the ALTER DATABASE... SQL Line was found online from Google search Gemini AI results because no other source gave the answer clearly
         # What it essentially does is closes any other existing connections to the database to get rid of error "cannot drop...bc currently in USE"
         sql_command = """
-                          ALTER DATABASE [RoseShreddedNerdscopy]
+                          ALTER DATABASE [RoseShreddedNerdscopy2]
                           SET SINGLE_USER WITH ROLLBACK IMMEDIATE
-                          DROP DATABASE [RoseShreddedNerdscopy]
+                          DROP DATABASE [RoseShreddedNerdscopy2]
                         """
         cursor.execute(sql_command)
         conn.commit()
@@ -124,10 +124,11 @@ def create_tables(connection_string):
         """
         CREATE TABLE [Set] (
             ExerciseID int REFERENCES Exercise(ID) NOT NULL,
+            SessionID int REFERENCES [Session](ID) NOT NULL,
             SetNumber int NOT NULL,
             Weight decimal(5,2) NULL,
             Reps int NULL,
-            PRIMARY KEY (ExerciseID, SetNumber)
+            PRIMARY KEY (ExerciseID, SetNumber, SessionID)
         )
         """,
         "CREATE TABLE [Leaderboard] (ID int IDENTITY PRIMARY KEY NOT NULL, Name varchar(50) NOT NULL)",
@@ -353,7 +354,7 @@ def create_stored_procedures(connection_string):
                             )
                           AS
                           BEGIN
-
+                                SET NOCOUNT ON;
                                 IF @FName IS NULL OR @LName IS NULL OR @Username IS NULL OR @PasswordHash IS NULL
                                     OR (SELECT COUNT(Username) FROM Person WHERE Username = @Username) > 0
                                 BEGIN;
@@ -457,29 +458,32 @@ def create_stored_procedures(connection_string):
                                                     @IsPr bit,
                                                     @SetNumber int,
                                                     @Weight decimal(5, 2),
-                                                    @Reps int,
-                                                    @GeneratedID int OUTPUT
+                                                    @Reps int
                                                 )
                                             AS
                                             BEGIN
-                                                IF @Name IS NULL OR @Category IS NULL OR @SessionID IS NULL OR (SELECT COUNT(*) FROM Session WHERE ID = @SessionID) = 0
-                                                BEGIN;
-                                                    THROW '51001', 'Invalid parameters', 1
+                                                SET NOCOUNT ON;
+                                                DECLARE @ExID int;
+
+                                                SELECT @ExID = ID FROM Exercise WHERE Name = @Name;
+                                                IF @ExID IS NULL
+                                                BEGIN
+                                                    INSERT INTO Exercise (Name, Category, Duration) VALUES (@Name, @Category, @Duration);
+                                                    SET @ExID = SCOPE_IDENTITY();
                                                 END
 
-                                                INSERT INTO [Exercise] (Name, Category, Duration)
-                                                VALUES (@Name, @Category, @Duration)
+                                                IF NOT EXISTS (SELECT 1 FROM Logs WHERE SessionID = @SessionID AND ExerciseID = @ExID)
+                                                BEGIN
+                                                    INSERT INTO Logs (SessionID, ExerciseID, IsPr) VALUES (@SessionID, @ExID, @IsPr);
+                                                END
 
-                                                SET @GeneratedID = SCOPE_IDENTITY()
-
-                                                INSERT INTO [Logs] (ExerciseID, SessionID, IsPr)
-                                                VALUES (@GeneratedID, @SessionID, @IsPr)
-
-                                                INSERT INTO [Set] (ExericseID, SetNumber, Weight, Reps)
-                                                VALUES (@GeneratedID, @SetNumber, @Weight, @Reps)
-
+                                                INSERT INTO [Set] (ExerciseID, SessionID, SetNumber, Weight, Reps)
+                                                VALUES (@ExID, @SessionID, @SetNumber, @Weight, @Reps);
                                             END
                                         """
+        
+        cursor.execute(add_exercise_and_related_info_sql)
+        conn.commit()
 
 
 
@@ -662,10 +666,71 @@ def create_stored_procedures(connection_string):
         cursor.execute(delete_session_sql)
         conn.commit()
 
+        upsert_set_sql = """
+            CREATE OR ALTER PROCEDURE upsert_Set
+                @ExerciseID INT,
+                @SessionID INT,
+                @SetNumber INT,
+                @Weight DECIMAL(5,2),
+                @Reps INT
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+
+                IF EXISTS (
+                    SELECT 1 FROM [Set] 
+                    WHERE SessionID = @SessionID 
+                    AND ExerciseID = @ExerciseID 
+                    AND SetNumber = @SetNumber
+                )
+                BEGIN
+                    UPDATE [Set]
+                    SET Weight = @Weight,
+                        Reps = @Reps
+                    WHERE SessionID = @SessionID 
+                    AND ExerciseID = @ExerciseID 
+                    AND SetNumber = @SetNumber;
+                END
+                ELSE
+                BEGIN
+                    INSERT INTO [Set] (ExerciseID, SessionID, SetNumber, Weight, Reps)
+                    VALUES (@ExerciseID, @SessionID, @SetNumber, @Weight, @Reps);
+                END
+            END
+        """
+        cursor.execute(upsert_set_sql)
+        conn.commit()
+
+        get_session_details_sql = """
+            CREATE OR ALTER PROCEDURE get_SessionDetails
+                @SessionID int
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+                SELECT 
+                    e.[Name] AS ExerciseName,
+                    e.Category,
+                    s.SetNumber,
+                    s.Weight,
+                    s.Reps,
+                    l.IsPr
+                FROM [Logs] l
+                JOIN [Exercise] e 
+                    ON l.ExerciseID = e.ID
+                LEFT JOIN [Set] s 
+                    ON s.ExerciseID = l.ExerciseID 
+                    AND s.SessionID = l.SessionID
+                WHERE l.SessionID = @SessionID
+                ORDER BY e.[Name], s.SetNumber
+            END
+        """
+        cursor.execute(get_session_details_sql)
+        conn.commit()
+
 
 # create_db(connection_string_master)
-# # add_owners(connection_string_master)
-# create_tables(connection_string_database_copy)
-# seed_data(connection_string_database_copy)
-# create_stored_procedures(connection_string_database_copy)
-destroy_db(connection_string_master)
+# add_owners(connection_string_master)
+# create_tables(connection_string_database_copy2)
+# seed_data(connection_string_database_copy2)
+# create_stored_procedures(connection_string_database_copy2)
+# destroy_db(connection_string_master)
