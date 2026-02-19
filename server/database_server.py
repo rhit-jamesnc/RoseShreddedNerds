@@ -27,17 +27,17 @@ connection_string_database_copy = f'DRIVER={driver};SERVER={server};DATABASE={da
 def create_db(connection_string):
     with pyodbc.connect(connection_string, autocommit=True) as conn:
         cursor = conn.cursor()
-        sql_command = """
-                            CREATE DATABASE [RoseShreddednerdscopy]
+        sql_command = f"""
+                            CREATE DATABASE [{database_copy}]
                             ON
                                     PRIMARY ( NAME=Data,
-                                    FILENAME='/var/opt/mssql/data/RoseShreddednerdscopy.mdf',
+                                    FILENAME='/var/opt/mssql/data/{database_copy}.mdf',
                                     SIZE=20MB,
                                     MAXSIZE=90MB,
                                     FILEGROWTH=12%)
                             LOG ON
                                     ( NAME=Log,
-                                    FILENAME='/var/opt/mssql/data/RoseShreddednerdscopy.ldf',
+                                    FILENAME='/var/opt/mssql/data/{database_copy}.ldf',
                                     SIZE=10MB,
                                     MAXSIZE=30MB,
                                     FILEGROWTH=17%)
@@ -67,10 +67,10 @@ def destroy_db(connection_string):
         cursor = conn.cursor()
         # Note the ALTER DATABASE... SQL Line was found online from Google search Gemini AI results because no other source gave the answer clearly
         # What it essentially does is closes any other existing connections to the database to get rid of error "cannot drop...bc currently in USE"
-        sql_command = """
-                          ALTER DATABASE [RoseShreddednerdscopy]
+        sql_command = f"""
+                          ALTER DATABASE [{database_copy}]
                           SET SINGLE_USER WITH ROLLBACK IMMEDIATE
-                          DROP DATABASE [RoseShreddednerdscopy]
+                          DROP DATABASE [{database_copy}]
                         """
         cursor.execute(sql_command)
         conn.commit()
@@ -106,7 +106,7 @@ def create_tables(connection_string):
                                 Location varchar(50) NULL,
                                 Notes varchar(500) NULL,
                                 Visibility bit,
-                                StudentID int REFERENCES Student(ID) NOT NULL,
+                                StudentID int REFERENCES Student(ID) NULL,
                                 ClassID int REFERENCES Class(ID) NULL
                             )
                             CREATE TABLE [Teaches] (
@@ -306,9 +306,9 @@ def seed_data(connection_string):
                 )
             
             cursor.execute(
-                "IF NOT EXISTS (SELECT 1 FROM [Set] WHERE ExerciseID = ? AND SetNumber = ?) "
-                "INSERT INTO [Set] (ExerciseID, SetNumber, Weight, Reps) VALUES (?, ?, ?, ?)",
-                (eid, 1, eid, 1, 225.50, 5)
+                "IF NOT EXISTS (SELECT 1 FROM [Set] WHERE ExerciseID = ? AND SetNumber = ? AND SessionID = ?) "
+                "INSERT INTO [Set] (ExerciseID, SessionID, SetNumber, Weight, Reps) VALUES (?, ?, ?, ?, ?)",
+                (eid, 1, student_sess_id, eid, student_sess_id, 1, 225.50, 5)
             )
 
         if sid and lid and eid:
@@ -336,7 +336,7 @@ def create_stored_procedures(connection_string):
     stored_procedures.unenroll_student(connection_string)
     stored_procedures.get_trainer_classes(connection_string)
     stored_procedures.get_session_in_class(connection_string)
-    stored_procedures.delete_session_in_class(connection_string)
+    stored_procedures.delete_class_session(connection_string)
     stored_procedures.add_and_update_pr(connection_string)
     stored_procedures.get_pr_sql(connection_string)
     stored_procedures.insert_pr_history(connection_string)
@@ -350,11 +350,17 @@ def create_stored_procedures(connection_string):
     stored_procedures.get_session_details(connection_string)
     stored_procedures.get_person_id_by_username(connection_string)
     stored_procedures.get_AllClasses(connection_string)
+    stored_procedures.sp_CreateClass(connection_string)
+    stored_procedures.sp_UpdateClassSession(connection_string)
+    stored_procedures.sp_UpsertExerciseLog(connection_string)
+    stored_procedures.sp_DeleteClass(connection_string)
+    stored_procedures.enroll_student(connection_string)
+
 
 def create_and_setup_db():
-    #create_db(connection_string_master)
-    #create_tables(connection_string_database_copy)
-    #seed_data(connection_string_database_copy)
+    # create_db(connection_string_master)
+    # create_tables(connection_string_database_copy)
+    # seed_data(connection_string_database_copy)
     create_stored_procedures(connection_string_database_copy)
 
 create_and_setup_db()

@@ -14,7 +14,7 @@ export default function ClassList() {
       .then((resp) => {
         const user = resp?.user || null;
         setMe(user);
-        if (user?.role === "student" && user?.sql_id) {
+        if (user?.role?.toLowerCase() === "student") {
           fetchMyEnrollments(user.sql_id);
         }
       })
@@ -54,6 +54,7 @@ export default function ClassList() {
 
       setJoinedClasses((prev) => new Set(prev).add(classId));
       setStatus({ type: "success", msg: "Successfully enrolled!" });
+      fetchMyEnrollments();
 
     } catch (e) {
       const errorMsg = e.message || "A server error occurred.";
@@ -104,7 +105,7 @@ export default function ClassList() {
                         <Badge bg="secondary">#{c.id || "N/A"}</Badge>
                       </td>
                       <td className="text-end">
-                        {me?.role === "student" && (
+                        {me?.role?.toLowerCase() === "student" && (
                           <Button
                             variant={isJoined ? "success" : "outline-success"}
                             size="sm"

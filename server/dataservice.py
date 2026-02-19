@@ -178,7 +178,6 @@ class DataService:
         try:
             with pyodbc.connect(self.connection_string_database_copy) as conn:
                 cursor = conn.cursor()
-
                 cursor.execute("{CALL get_Person_by_Username (?)}", username)
 
                 row = cursor.fetchone()
@@ -661,11 +660,11 @@ class DataService:
         try:
             with pyodbc.connect(self.connection_string_database_copy) as conn:
                 cursor = conn.cursor()
-                cursor.execute('{CALL UnenrollStudent (?,?)}', [student_id, class_id])
+                cursor.execute('{CALL UnenrollStudent (?, ?)}', [student_id, class_id])
                 conn.commit()
                 return {"success": True}
         except Exception as e:
-            print(f"SQL Error in UnenrollStudent: {e}")
+            print(f"SQL Error in unenroll_student: {e}")
             return {"error": str(e)}
             
     def update_class_session(self, class_id, session_date, exercises):
@@ -678,7 +677,7 @@ class DataService:
                 cursor.execute("{CALL sp_UpdateClassSession (?, ?)}", (int(class_id), session_date))
                 session_id = cursor.fetchone()[0]
 
-                processed_exercise_ids = set()
+                exercise_id_map = {}  # name -> db exercise id
 
                 for ex_data in exercises:
                     if isinstance(ex_data, dict):
@@ -692,17 +691,16 @@ class DataService:
                         continue
 
                     cursor.execute("{CALL sp_UpsertExerciseLog (?, ?, ?)}", (session_id, ex_name, ex_cat))
-                    
                     result = cursor.fetchone()
                     if result:
-                        processed_exercise_ids.add(result[0])
+                        exercise_id_map[ex_name.strip().lower()] = result[0] 
 
                 conn.commit()
-                return {"success": True, "session_id": session_id}
+                return {"success": True, "session_id": session_id, "exercise_id_map": exercise_id_map}
             except Exception as e:
                 conn.rollback()
                 return {"error": str(e)}
-
+            
     def get_class_details(self, class_id):
         with pyodbc.connect(self.connection_string_database_copy) as conn:
             cursor = conn.cursor()
@@ -908,4 +906,4 @@ class DataService:
             cursor.execute("{CALL get_SessionDetails (?)}", (session_id,))
 
             columns = [column[0] for column in cursor.description]
-            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+            return [{"session_id": session_id, **dict(zip(columns, row))} for row in cursor.fetchall()]

@@ -464,8 +464,8 @@ def register_class():
     name = (data.get("name") or "").strip()
 
     user = current_user()
-    trainer_sql_id = user.get("sql_id")
-    role = user.get("role")
+    trainer_sql_id = user.get("ID")
+    role = user.get("role").lower()
 
     if not name:
         return jsonify({"error": "Missing class name"}), 400
@@ -483,9 +483,9 @@ def register_class():
 @login_required
 def delete_class(class_id):
     user = current_user()
-    trainer_sql_id = user.get("sql_id")
+    trainer_sql_id = user.get("ID")
     
-    if user.get("role") != "trainer" or not trainer_sql_id:
+    if user.get("role").lower() != "trainer" or not trainer_sql_id:
         return jsonify({"error": "Only trainers can delete classes"}), 403
 
     try:
@@ -503,10 +503,10 @@ def delete_class(class_id):
 def enroll_in_class(class_id):
     user = current_user()
     
-    if user.get("role") != "student":
+    if user.get("role").lower() != "student":
         return jsonify({"error": "Only students can enroll in classes"}), 403
 
-    student_sql_id = user.get("sql_id")
+    student_sql_id = user.get("ID")
     if not student_sql_id:
         return jsonify({"error": "Student record not found in SQL database"}), 404
 
@@ -521,10 +521,10 @@ def enroll_in_class(class_id):
 @login_required
 def unenroll_from_class(class_id):
     user = current_user()
-    if user.get("role") != "student":
+    if user.get("role").lower() != "student":
         return jsonify({"error": "Only students can unenroll"}), 403
 
-    student_sql_id = user.get("sql_id")
+    student_sql_id = user.get("ID")
     result = ds.unenroll_student(student_sql_id, class_id)
     
     if "error" in result:
@@ -537,10 +537,10 @@ def unenroll_from_class(class_id):
 def get_my_classes():
     user = current_user()
     
-    if user.get("role") != "student":
+    if user.get("role").lower() != "student":
         return jsonify({"error": "Unauthorized"}), 403
         
-    student_sql_id = user.get("sql_id")
+    student_sql_id = user.get("ID")
     if not student_sql_id:
         return jsonify({"error": "Student profile not found"}), 404
         
@@ -552,10 +552,10 @@ def get_my_classes():
 def get_trainer_dashboard_classes():
     user = current_user()
     
-    if user.get("role") != "trainer":
+    if user.get("role").lower() != "trainer":
         return jsonify({"error": "Unauthorized"}), 403
         
-    trainer_sql_id = user.get("sql_id")
+    trainer_sql_id = user.get("ID")
     if not trainer_sql_id:
         return jsonify({"error": "Trainer profile not found"}), 404
         
@@ -586,7 +586,7 @@ def update_session_route(class_id):
 @login_required
 def get_class_sessions(class_id):
     user = current_user()
-    if user.get("role") != "trainer":
+    if user.get("role").lower() != "trainer":
         return jsonify({"error": "Unauthorized"}), 403
 
     try:
@@ -688,7 +688,7 @@ def create_exercise():
 def delete_session_exercise(session_id, exercise_id):
     user = current_user()
     
-    if user.get("role") != "trainer":
+    if user.get("role").lower() != "trainer":
         return jsonify({"error": "Only trainers can modify session exercises"}), 403
 
     try:
