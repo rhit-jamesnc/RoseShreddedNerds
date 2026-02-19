@@ -6,7 +6,8 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone, date
 from helpers_for_dataservice import now_iso, parse_iso_z, parse_date, epley_1rm, iso_week_of, iso_week_boundary
 
-load_dotenv()
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(_BASE_DIR, ".env"))
 
 server = os.getenv("DB_SERVER")
 database_master = 'master'
@@ -79,7 +80,7 @@ class DataService:
         self.server = os.getenv("DB_SERVER")
         self.database_master = 'master'
         self.database = os.getenv("DB_NAME")
-        self.database_copy = 'RoseShreddednerdscopy'
+        self.database_copy = os.getenv("DB_NAME_COPY", "RoseShreddednerdscopy")
         self.username = os.getenv("DB_USERNAME")
         self.password = os.getenv("DB_PASSWORD")
         self.driver = '{ODBC Driver 17 for SQL Server}'
@@ -90,19 +91,49 @@ class DataService:
 
         self.user = None
 
+    def _role_for_person_id(self, person_id):
+        try:
+            with pyodbc.connect(self.connection_string_database_copy) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT
+                        CASE
+                            WHEN EXISTS (SELECT 1 FROM Trainer WHERE ID = ?) THEN 'trainer'
+                            WHEN EXISTS (SELECT 1 FROM Student WHERE ID = ?) THEN 'student'
+                            ELSE NULL
+                        END
+                    """,
+                    (int(person_id), int(person_id)),
+                )
+                row = cursor.fetchone()
+                return row[0] if row else None
+        except Exception as e:
+            print(f"SQL Error in _role_for_person_id: {e}")
+            return None
+
+    def _decorate_user(self, row):
+        if not row:
+            return None
+        person_id = row[0]
+        role = self._role_for_person_id(person_id)
+        return {
+            "ID": person_id,
+            "FName": row[1],
+            "LName": row[2],
+            "Username": row[3],
+            "PasswordHash": row[4],
+            "DOB": row[5],
+            "Weight": row[6],
+            "sql_id": person_id,
+            "role": role,
+            "username": row[3],
+            "first_name": row[1],
+            "last_name": row[2],
+        }
+
     def _user(self):
         return self.user
-
-    def init_store(self, seed_exercises=False):
-        """
-        Ensure base collections exist and optionally add an initia set of exercises.
-        If at all, this will be called only once at startup from the Flask server
-        """
-        self._ensure_roots()
-        self._ensure_pr_history_table_sql()
-        if seed_exercises and not self.db.get("exercises"):
-            self._set_exercises()
-        self.dump()
 
     def login(self, ID):
         self.user = self.get_user_by_id(int(ID))
@@ -144,26 +175,20 @@ class DataService:
 
 
     def get_user_by_username(self, username):
-        with pyodbc.connect(self.connection_string_database_copy) as conn:
-            cursor = conn.cursor()
+        try:
+            with pyodbc.connect(self.connection_string_database_copy) as conn:
+                cursor = conn.cursor()
 
-            cursor.execute("{CALL get_Person_by_Username (?)}", username)
+                cursor.execute("{CALL get_Person_by_Username (?)}", username)
 
-            row = cursor.fetchone()
-            if not row:
-                return None
+                row = cursor.fetchone()
+                if not row:
+                    return None
 
-            user_searched = {
-                "ID": row[0],
-                "FName": row[1],
-                "LName": row[2],
-                "Username": row[3],
-                "PasswordHash": row[4],
-                "DOB": row[5],
-                "Weight": row[6]
-            }
-
-            return user_searched
+                return self._decorate_user(row)
+        except Exception as e:
+            print(f"SQL Error in get_user_by_username: {e}")
+            return None
     
     def get_user_by_id(self, user_id):
         with pyodbc.connect(self.connection_string_database_copy) as conn:
@@ -176,17 +201,7 @@ class DataService:
             if not row:
                 return None
             
-            user_searched = {
-                "ID": row[0],
-                "FName": row[1],
-                "LName": row[2],
-                "Username": row[3],
-                "PasswordHash": row[4],
-                "DOB": row[5],
-                "Weight": row[6]
-            }
-
-            return user_searched
+            return self._decorate_user(row)
     
     def update_user(self, ID, FName=None, LName=None, Username=None, PasswordHash=None, DOB=None, Weight=None):
         with pyodbc.connect(self.connection_string_database_copy) as conn:
@@ -258,7 +273,12 @@ class DataService:
         try:
             with pyodbc.connect(self.connection_string_database_copy) as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT ID, [Name], [Category] FROM [Exercise] ORDER BY [Name] ASC")
+                cursor.execute("""
+                    SELECT MIN(ID) AS ID, [Name], [Category]
+                    FROM [Exercise]
+                    GROUP BY [Name], [Category]
+                    ORDER BY [Name] ASC
+                """)
                 
                 for row in cursor.fetchall():
                     exercises.append({
@@ -442,6 +462,58 @@ class DataService:
                 })
         return items
 
+    def _maybe_update_pr_sql(self, sql_student_id, exercise_name, weight_kg, reps):
+        if not sql_student_id or not exercise_name:
+            return None
+
+        try:
+            weight_val = float(weight_kg)
+            reps_val = int(reps)
+        except Exception:
+            return None
+
+        one_rm = epley_1rm(weight_val, reps_val)
+        existing = None
+        try:
+            records = self.get_personal_records_sql(sql_student_id)
+            for rec in records:
+                if rec["exercise_name"].lower() == exercise_name.lower():
+                    existing = rec
+                    break
+        except Exception as e:
+            print(f"SQL Error in _maybe_update_pr_sql (read): {e}")
+
+        if existing and one_rm <= existing.get("best_1rm_kg", 0):
+            return None
+
+        try:
+            self._ensure_pr_history_table_sql()
+            with pyodbc.connect(self.connection_string_database_copy) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "{CALL upsert_PersonalRecord (?, ?, ?, ?)}",
+                    (int(sql_student_id), exercise_name, weight_val, reps_val),
+                )
+                self._insert_pr_history_row_sql(
+                    cursor,
+                    int(sql_student_id),
+                    exercise_name,
+                    weight_val,
+                    reps_val,
+                    one_rm,
+                )
+                conn.commit()
+        except Exception as e:
+            print(f"SQL Error in _maybe_update_pr_sql (write): {e}")
+            return None
+
+        return {
+            "exercise_name": exercise_name,
+            "best_weight_kg": weight_val,
+            "best_reps": reps_val,
+            "best_1rm_kg": one_rm,
+        }
+
     def _exercise_exists_sql(self, exercise_id):
         """Check exercise existence using stored procedure"""
         with pyodbc.connect(self.connection_string_database_copy) as conn:
@@ -535,16 +607,36 @@ class DataService:
                 cursor.execute("{CALL get_StudentEnrollments (?)}", (student_sql_id,))
                 
                 for row in cursor.fetchall():
+                    session_dates = "Not Set"
+                    if len(row) > 4 and row[4]:
+                        session_dates = row[4]
                     enrolled_classes.append({
                         "id": row[0],
                         "name": row[1],
                         "trainer_name": f"{row[2]} {row[3]}",
-                        "session_dates": row[4] if row[4] else "Not Set"
+                        "session_dates": session_dates
                     })
         except Exception as e:
             print(f"Error: {e}")
         return enrolled_classes
     
+    def enroll_student(self, student_sql_id, class_id):
+        try:
+            with pyodbc.connect(self.connection_string_database_copy) as conn:
+                cursor = conn.cursor()
+                cursor.execute("{CALL EnrollStudent (?, ?)}", (int(student_sql_id), int(class_id)))
+                row = cursor.fetchone()
+                if row is None:
+                    return {"error": "Enrollment failed"}
+                success = int(row[0]) == 1
+                message = row[1]
+                if success:
+                    return {"success": True}
+                return {"error": message or "Enrollment failed"}
+        except Exception as e:
+            print(f"SQL Error in EnrollStudent: {e}")
+            return {"error": str(e)}
+
     def get_trainer_classes(self, trainer_id):
         with pyodbc.connect(self.connection_string_database_copy) as conn:
             cursor = conn.cursor()
@@ -690,6 +782,28 @@ class DataService:
         except Exception as e:
             print(f"SQL Error: {e}")
             raise e
+
+    def list_campus_workouts(self):
+        try:
+            with pyodbc.connect(self.connection_string_database_copy) as conn:
+                cursor = conn.cursor()
+                cursor.execute("{CALL get_CampusWorkouts (?)}", (None,))
+                rows = cursor.fetchall()
+
+                workouts = []
+                for row in rows:
+                    date_val = row[0]
+                    start_t = row[1]
+                    end_t = row[2]
+
+                    workouts.append({
+                        "date": date_val.strftime("%Y-%m-%d") if date_val else "",
+                        "duration_minutes": _minutes_between(start_t, end_t),
+                    })
+                return workouts
+        except Exception as e:
+            print(f"SQL Error in list_campus_workouts: {e}")
+            return []
         
     def create_exercise(self, name, category="General"):
         with pyodbc.connect(self.connection_string_database_copy) as conn:

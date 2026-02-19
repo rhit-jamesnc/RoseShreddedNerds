@@ -7,14 +7,15 @@ import os
 from dotenv import load_dotenv
 import stored_procedures
 
-load_dotenv()
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(_BASE_DIR, ".env"))
 
 print(pyodbc.drivers())
 
 server = os.getenv("DB_SERVER")
 database_master = 'master'
 database = os.getenv("DB_NAME")
-database_copy = 'RoseShreddednerdscopy'
+database_copy = os.getenv("DB_NAME_COPY", "RoseShreddednerdscopy")
 username = os.getenv("DB_USERNAME")
 password = os.getenv("DB_PASSWORD")
 driver = '{ODBC Driver 17 for SQL Server}'
@@ -331,15 +332,23 @@ def create_stored_procedures(connection_string):
     stored_procedures.get_session_info(connection_string)
     stored_procedures.get_schedule_info(connection_string)
     stored_procedures.get_student_enrollments(connection_string)
+    stored_procedures.enroll_student(connection_string)
     stored_procedures.unenroll_student(connection_string)
     stored_procedures.get_trainer_classes(connection_string)
     stored_procedures.get_session_in_class(connection_string)
     stored_procedures.delete_session_in_class(connection_string)
     stored_procedures.add_and_update_pr(connection_string)
     stored_procedures.get_pr_sql(connection_string)
+    stored_procedures.insert_pr_history(connection_string)
+    stored_procedures.get_pr_progression(connection_string)
+    stored_procedures.check_exercise_exists(connection_string)
+    stored_procedures.get_exercise_name(connection_string)
+    stored_procedures.get_exercise_leaderboard(connection_string)
     stored_procedures.get_big3_leaderboard(connection_string)
+    stored_procedures.get_campus_workouts(connection_string)
     stored_procedures.upsert_set(connection_string)
     stored_procedures.get_session_details(connection_string)
+    stored_procedures.get_person_id_by_username(connection_string)
     stored_procedures.get_AllClasses(connection_string)
 
 def create_and_setup_db():

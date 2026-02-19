@@ -190,6 +190,12 @@ export default function Workouts() {
     return exercise ? exercise.name : `#${id}`;
   }
 
+  function prLabel(pr) {
+    if (pr?.exercise_name) return pr.exercise_name;
+    if (pr?.exercise_id) return prLabel(pr);
+    return "Exercise";
+  }
+
   return (
     <div className="workouts-page py-3">
       <h1 className="mb-3">Log a workout</h1>
@@ -340,7 +346,7 @@ export default function Workouts() {
                     {prs.map((pr, i) => (
                       <span key={pr.id || i}>
                         {i > 0 ? ", " : ""}
-                        {exerciseNameById(pr.exercise_id)} —{" "}
+                        {prLabel(pr)} —{" "}
                         {pr.best_weight_kg} kg x {pr.best_reps}{" "}
                         <Badge bg="light" text="dark">est. {pr.best_1rm_kg.toFixed(1)} kg 1RM</Badge>
                       </span>

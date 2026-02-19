@@ -63,7 +63,9 @@ def get_person_by_username(connection_string):
                             BEGIN;
                                 THROW 51000, 'Error: No user with the given username exists in the database', 1
                             END
-                            SELECT * FROM Person WHERE Username = @Username
+                            SELECT ID, FName, LName, Username, PasswordHash, DOB, [Weight]
+                            FROM Person
+                            WHERE Username = @Username
                         END
                      """
         cursor.execute(sql_script)
@@ -84,7 +86,9 @@ def get_person_by_id(connection_string):
                             BEGIN;
                                 THROW 51000, 'Error: No user with the user id exists in the database', 1
                             END
-                            SELECT * FROM Person WHERE ID = @ID
+                            SELECT ID, FName, LName, Username, PasswordHash, DOB, [Weight]
+                            FROM Person
+                            WHERE ID = @ID
                         END
                      """
         cursor.execute(sql_script)
@@ -226,8 +230,8 @@ def add_exercise_info(connection_string):
                                                 INSERT INTO [Logs] (ExerciseID, SessionID, IsPr)
                                                 VALUES (@GeneratedID, @SessionID, @IsPr)
 
-                                                INSERT INTO [Set] (ExerciseID, SetNumber, Weight, Reps)
-                                                VALUES (@GeneratedID, @SetNumber, @Weight, @Reps)
+                                                INSERT INTO [Set] (ExerciseID, SessionID, SetNumber, Weight, Reps)
+                                                VALUES (@GeneratedID, @SessionID, @SetNumber, @Weight, @Reps)
 
                                             END
                                         """
@@ -314,7 +318,19 @@ def get_schedule_info(connection_string):
                             )
                         AS
                         BEGIN
-                            SELECT TOP(@NumRows) * FROM Session WHERE StudentID = @ID
+                            SELECT TOP(@NumRows)
+                                ID,
+                                [Date],
+                                StartTime,
+                                EndTime,
+                                Location,
+                                Notes,
+                                Visibility,
+                                StudentID,
+                                ClassID
+                            FROM [Session]
+                            WHERE StudentID = @ID
+                            ORDER BY [Date] DESC, ID DESC
                         END
                      """
         cursor.execute(sql_script)
@@ -354,6 +370,48 @@ def unenroll_student(connection_string):
 
                 DELETE FROM [HasA] 
                 WHERE StudentID = @StudentID AND ClassID = @ClassID;
+            END
+        """
+        cursor.execute(sql_script)
+        conn.commit()
+
+def enroll_student(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+            CREATE OR ALTER PROCEDURE EnrollStudent
+                @StudentID INT,
+                @ClassID INT
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+
+                IF @StudentID IS NULL OR @ClassID IS NULL
+                BEGIN
+                    SELECT 0 AS Success, 'Missing StudentID or ClassID' AS Message;
+                    RETURN;
+                END
+
+                IF NOT EXISTS (SELECT 1 FROM [Student] WHERE ID = @StudentID)
+                BEGIN
+                    SELECT 0 AS Success, 'Student not found' AS Message;
+                    RETURN;
+                END
+
+                IF NOT EXISTS (SELECT 1 FROM [Class] WHERE ID = @ClassID)
+                BEGIN
+                    SELECT 0 AS Success, 'Class not found' AS Message;
+                    RETURN;
+                END
+
+                IF EXISTS (SELECT 1 FROM [HasA] WHERE StudentID = @StudentID AND ClassID = @ClassID)
+                BEGIN
+                    SELECT 0 AS Success, 'Already enrolled' AS Message;
+                    RETURN;
+                END
+
+                INSERT INTO [HasA] (StudentID, ClassID) VALUES (@StudentID, @ClassID);
+                SELECT 1 AS Success, NULL AS Message;
             END
         """
         cursor.execute(sql_script)
@@ -522,6 +580,29 @@ def get_big3_leaderboard(connection_string):
                 ORDER BY Big3Total DESC
             END
         """
+        cursor.execute(sql_script)
+        conn.commit()
+
+# Stored procedure to get campus-wide workouts for the last year
+def get_campus_workouts(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+                        CREATE OR ALTER PROCEDURE get_CampusWorkouts
+                            (
+                                @SinceDate date = NULL
+                            )
+                        AS
+                        BEGIN
+                            IF @SinceDate IS NULL
+                                SET @SinceDate = DATEADD(year, -1, CAST(GETDATE() AS date))
+
+                            SELECT [Date], StartTime, EndTime
+                            FROM [Session]
+                            WHERE [Date] >= @SinceDate
+                            ORDER BY [Date] DESC
+                        END
+                     """
         cursor.execute(sql_script)
         conn.commit()
 

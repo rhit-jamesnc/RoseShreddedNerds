@@ -92,7 +92,7 @@ def register():
             weight=weight,
             role=role
         )
-        session["user_id"] = user["id"]
+        session["user_id"] = user["ID"]
         session.permanent = True
 
         return jsonify({"user": user}), 201
@@ -115,16 +115,38 @@ def login():
     if not username or not password:
         return jsonify({"error": "No username or password given."}), 400
     
-    user = ds.get_user_by_username(username)
-    if not user or not check_password_hash(user["PasswordHash"], password):
-        return jsonify({"error": "Invalid credentials"}), 401
-    
-    # Set the user for the session and give back/return the user
-    session["user_id"] = user["ID"]
-    session.permanent = True
-    ds.login(session["user_id"])
+    try:
+        user = ds.get_user_by_username(username)
+        if not user:
+            return jsonify({"error": "Invalid credentials"}), 401
 
-    return jsonify({"user": ds._user()}), 200
+        pw_hash = user.get("PasswordHash")
+        if isinstance(pw_hash, (bytes, bytearray, memoryview)):
+            pw_hash = bytes(pw_hash).decode("utf-8", errors="ignore")
+        if not isinstance(pw_hash, str) or not pw_hash:
+            return jsonify({"error": "Invalid credentials"}), 401
+
+        try:
+            ok = check_password_hash(pw_hash, password)
+        except Exception as e:
+            print(f"Password hash error: {e}")
+            ok = False
+
+        if not ok:
+            return jsonify({"error": "Invalid credentials"}), 401
+        
+        # Set the user for the session and give back/return the user
+        session["user_id"] = user["ID"]
+        session.permanent = True
+        try:
+            ds.login(session["user_id"])
+        except Exception as e:
+            print(f"Login session error: {e}")
+
+        return jsonify({"user": ds._user()}), 200
+    except Exception as e:
+        print(f"Login error: {e}")
+        return jsonify({"error": "Login failed"}), 500
 
 @app.get("/api/profile")
 @login_required
@@ -210,7 +232,8 @@ def auth_status():
 #-------------------------------Exercises --------------------------------
 @app.get("/api/exercises")
 def exercises_list():
-    return jsonify(ds.list_exercises())
+    items = ds.list_exercises()
+    return jsonify({"items": items})
 
 # ----------------------------------- Sets ---------------------------------------------
 
@@ -294,12 +317,6 @@ def create_schedule_slot():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.get("/api/exercises")
-@login_required
-def get_exercises():
-    items = ds.list_exercises()
-    return jsonify({"items": items}), 200
-
 # ----------------------------- workouts (logs for a session) ---------------------------------
 
 @app.post("/api/workouts")
@@ -322,6 +339,7 @@ def log_workout_for_session():
 
     try:
         created_exercise_ids = []
+        new_prs = []
 
         for ex in items:
             name = (ex.get("name") or "").strip()
@@ -348,7 +366,11 @@ def log_workout_for_session():
                 )
                 created_exercise_ids.append(new_id)
 
-        return jsonify({"ok": True, "created_exercise_ids": created_exercise_ids}), 201
+            pr = ds._maybe_update_pr_sql(int(user_id), name, float(weight), int(reps))
+            if pr:
+                new_prs.append(pr)
+
+        return jsonify({"ok": True, "created_exercise_ids": created_exercise_ids, "result": {"new_prs": new_prs}}), 201
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -362,6 +384,11 @@ def list_workouts():
         return jsonify({"items": items}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.get("/api/workouts/campus")
+def list_campus_workouts():
+    items = ds.list_campus_workouts()
+    return jsonify({"items": items}), 200
 
 @app.get("/api/dashboard/stats")
 def dashboard_stats():
@@ -390,7 +417,7 @@ def exercise_leaderboards():
 @app.get("/api/personal-records")
 def personal_records():
     user = current_user()
-    sql_id = user.get("sql_id")
+    sql_id = user.get("sql_id") or user.get("ID")
     if not sql_id:
         return jsonify({"items": [], "message": "no sql server link for this account"}), 200
     items = ds.get_personal_records_sql(sql_id)
@@ -400,7 +427,7 @@ def personal_records():
 @login_required
 def personal_records_progression():
     user = current_user()
-    sql_id = user.get("sql_id")
+    sql_id = user.get("sql_id") or user.get("ID")
     if not sql_id:
         return jsonify({"items": [], "message": "no sql server link for this account"}), 200
     items = ds.get_pr_progression_sql(sql_id)
