@@ -1,4 +1,4 @@
-username,first_name,last_name,password,role,dob,weight
+username,fname,lname,password,role,dob,weight
 klinge0,Kelly,Linge,Password123!,Student,7/15/2025,230
 tstanfield1,Trixie,Stanfield,Password123!,Student,6/15/2025,183
 rmcgahy2,Rand,McGahy,Password123!,Student,12/6/2025,251
