@@ -798,6 +798,29 @@ def create_stored_procedures(connection_string):
         cursor.execute(delete_class_sql)
         conn.commit()
 
+        upsert_class_session_class_sql = """
+                    CREATE OR ALTER PROCEDURE sp_UpdateClassSession
+                        @ClassID INT,
+                        @SessionDate DATE
+                    AS
+                    BEGIN
+                        SET NOCOUNT ON;
+                        DECLARE @SessionID INT;
+
+                        SELECT @SessionID = ID FROM [Session] WHERE ClassID = @ClassID AND [Date] = @SessionDate;
+
+                        IF @SessionID IS NULL
+                        BEGIN
+                            INSERT INTO [Session] ([Date], ClassID) VALUES (@SessionDate, @ClassID);
+                            SET @SessionID = SCOPE_IDENTITY();
+                        END
+
+                        SELECT @SessionID AS SessionID;
+                    END
+                """
+        cursor.execute(upsert_class_session_class_sql)
+        conn.commit()
+
         upsert_session_exercise_sql = """
                 CREATE OR ALTER PROCEDURE sp_UpsertSessionExercise
                     @ClassID INT,

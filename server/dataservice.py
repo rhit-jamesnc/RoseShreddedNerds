@@ -744,7 +744,7 @@ class DataService:
                     })
         except Exception as e:
             print(f"Error: {e}")
-            return enrolled_classes
+        return enrolled_classes
     
     def get_trainer_classes(self, trainer_id):
         with pyodbc.connect(connection_string_database_copy) as conn:
