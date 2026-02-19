@@ -505,8 +505,6 @@ def delete_class_session_route(class_id):
             return jsonify(result), 404
             
         return jsonify(result), 200
-    except AttributeError:
-        return jsonify({"error": "The delete_class_session method is missing from DataService"}), 500
     except Exception as e:
         print(f"SERVER ERROR: {e}")
         return jsonify({"error": str(e)}), 500

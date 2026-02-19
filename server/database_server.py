@@ -732,10 +732,299 @@ def create_stored_procedures(connection_string):
         cursor.execute(get_session_details_sql)
         conn.commit()
 
+        create_trainer_sql = """
+                CREATE OR ALTER PROCEDURE sp_CreateTrainer
+                    @FName NVARCHAR(50),
+                    @LName NVARCHAR(50),
+                    @Username NVARCHAR(50),
+                    @PasswordHash NVARCHAR(255),
+                    @Weight FLOAT
+                AS
+                BEGIN
+                    SET NOCOUNT ON;
+                    DECLARE @PersonID INT;
+                    INSERT INTO [Person] (FName, LName, Username, PasswordHash, Weight)
+                    VALUES (@FName, @LName, @Username, @PasswordHash, @Weight);
+                    SET @PersonID = SCOPE_IDENTITY();
+                    INSERT INTO [Trainer] (ID) VALUES (@PersonID);
+                    SELECT @PersonID AS PersonID;
+                END
+            """
+        cursor.execute(create_trainer_sql)
+        conn.commit()
+
+        create_class_sql = """
+                CREATE OR ALTER PROCEDURE sp_CreateClass
+                    @TrainerID INT,
+                    @ClassName NVARCHAR(100)
+                AS
+                BEGIN
+                    SET NOCOUNT ON;
+                    DECLARE @ClassID INT;
+                    INSERT INTO [Class] (Name) VALUES (@ClassName);
+                    SET @ClassID = SCOPE_IDENTITY();
+                    INSERT INTO [Teaches] (TrainerID, ClassID) VALUES (@TrainerID, @ClassID);
+                    SELECT @ClassID AS ClassID;
+                END
+            """
+        cursor.execute(create_class_sql)
+        conn.commit()
+
+        delete_class_sql = """
+                CREATE OR ALTER PROCEDURE sp_DeleteClass
+                    @TrainerID INT,
+                    @ClassID INT
+                AS
+                BEGIN
+                    SET NOCOUNT ON;
+                    IF EXISTS (SELECT 1 FROM [Teaches] WHERE TrainerID = @TrainerID AND ClassID = @ClassID)
+                    BEGIN
+                        DECLARE @SessionIDs TABLE (ID INT);
+                        INSERT INTO @SessionIDs SELECT ID FROM [Session] WHERE ClassID = @ClassID;
+                        DELETE FROM [Logs] WHERE SessionID IN (SELECT ID FROM @SessionIDs);
+                        DELETE FROM [Set] WHERE SessionID IN (SELECT ID FROM @SessionIDs);
+                        DELETE FROM [Session] WHERE ClassID = @ClassID;
+                        DELETE FROM [HasA] WHERE ClassID = @ClassID;
+                        DELETE FROM [Teaches] WHERE ClassID = @ClassID;
+                        DELETE FROM [Class] WHERE ID = @ClassID;
+                        SELECT 1 AS Success;
+                    END
+                    ELSE
+                    BEGIN
+                        SELECT 0 AS Success;
+                    END
+                END
+            """
+        cursor.execute(delete_class_sql)
+        conn.commit()
+
+        upsert_session_exercise_sql = """
+                CREATE OR ALTER PROCEDURE sp_UpsertSessionExercise
+                    @ClassID INT,
+                    @SessionDate DATE,
+                    @ExName NVARCHAR(100),
+                    @ExCategory NVARCHAR(50)
+                AS
+                BEGIN
+                    SET NOCOUNT ON;
+                    DECLARE @SessionID INT;
+                    DECLARE @ExerciseID INT;
+
+                    SELECT @SessionID = ID FROM [Session] WHERE ClassID = @ClassID AND [Date] = @SessionDate;
+                    IF @SessionID IS NULL
+                    BEGIN
+                        INSERT INTO [Session] ([Date], ClassID) VALUES (@SessionDate, @ClassID);
+                        SET @SessionID = SCOPE_IDENTITY();
+                    END
+
+                    SELECT @ExerciseID = ID FROM [Exercise] WHERE [Name] = @ExName;
+                    IF @ExerciseID IS NULL
+                    BEGIN
+                        INSERT INTO [Exercise] ([Name], [Category]) VALUES (@ExName, @ExCategory);
+                        SET @ExerciseID = SCOPE_IDENTITY();
+                    END
+
+                    IF NOT EXISTS (SELECT 1 FROM [Logs] WHERE ExerciseID = @ExerciseID AND SessionID = @SessionID)
+                    BEGIN
+                        INSERT INTO [Logs] (ExerciseID, SessionID, IsPr) VALUES (@ExerciseID, @SessionID, 0);
+                    END
+
+                    SELECT @SessionID AS SessionID, @ExerciseID AS ExerciseID;
+                END
+            """
+
+        cursor.execute(upsert_session_exercise_sql)
+        conn.commit()
+
+        upsert_exercise_log_sql = """
+                CREATE OR ALTER PROCEDURE sp_UpsertExerciseLog
+                    @SessionID INT,
+                    @ExName NVARCHAR(100),
+                    @ExCategory NVARCHAR(50)
+                AS
+                BEGIN
+                    SET NOCOUNT ON;
+                    DECLARE @ExerciseID INT;
+
+                    SELECT @ExerciseID = ID FROM [Exercise] WHERE [Name] = @ExName;
+
+                    IF @ExerciseID IS NULL
+                    BEGIN
+                        INSERT INTO [Exercise] ([Name], [Category]) 
+                        VALUES (@ExName, @ExCategory);
+                        SET @ExerciseID = SCOPE_IDENTITY();
+                    END
+
+                    IF NOT EXISTS (SELECT 1 FROM [Logs] WHERE ExerciseID = @ExerciseID AND SessionID = @SessionID)
+                    BEGIN
+                        INSERT INTO [Logs] (ExerciseID, SessionID, IsPr) 
+                        VALUES (@ExerciseID, @SessionID, 0);
+                    END
+
+                    SELECT @ExerciseID AS ExerciseID;
+                END
+            """
+        cursor.execute(upsert_exercise_log_sql)
+        conn.commit()
+
+        get_class_sessions_sql = """
+            CREATE OR ALTER PROCEDURE get_ClassSessions
+                @ClassID INT
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+                SELECT 
+                    s.ID, 
+                    s.[Date], 
+                    c.Name AS ClassName, 
+                    e.[Name] AS ExerciseName, 
+                    e.[Category]
+                FROM [Session] s
+                LEFT JOIN [Class] c ON s.ClassID = c.ID
+                LEFT JOIN [Logs] l ON s.ID = l.SessionID
+                LEFT JOIN [Exercise] e ON l.ExerciseID = e.ID
+                WHERE s.ClassID = @ClassID
+                ORDER BY s.[Date] DESC;
+            END
+        """
+        cursor.execute(upsert_exercise_log_sql)
+        conn.commit()
+
+        delete_class_session_sql = """
+            CREATE OR ALTER PROCEDURE delete_ClassSession
+                @ClassID INT,
+                @SessionDate DATE
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+                DECLARE @SID INT;
+                SELECT @SID = ID FROM [Session] WHERE ClassID = @ClassID AND [Date] = @SessionDate;
+                
+                IF @SID IS NOT NULL
+                BEGIN
+                    DELETE FROM [Logs] WHERE SessionID = @SID;
+                    DELETE FROM [Set] WHERE SessionID = @SID;
+                    DELETE FROM [Session] WHERE ID = @SID;
+                    SELECT 1 AS Success;
+                END
+                ELSE SELECT 0 AS Success;
+            END
+        """
+        cursor.execute(delete_class_session_sql)
+        conn.commit()
+
+        upsert_exercise_sql = """
+            CREATE OR ALTER PROCEDURE upsert_Exercise
+                @Name NVARCHAR(100),
+                @Category NVARCHAR(50)
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+                DECLARE @EID INT;
+                SELECT @EID = ID FROM [Exercise] WHERE [Name] = @Name;
+                
+                IF @EID IS NULL
+                BEGIN
+                    INSERT INTO [Exercise] ([Name], [Category]) VALUES (@Name, @Category);
+                    SET @EID = SCOPE_IDENTITY();
+                END
+                SELECT @EID AS ID;
+            END
+        """
+        cursor.execute(upsert_exercise_sql)
+        conn.commit()
+
+        delete_exercise_from_session_sql = """
+            CREATE OR ALTER PROCEDURE delete_ExerciseFromSession
+                @SessionID INT,
+                @ExerciseID INT
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+                DELETE FROM [Set] WHERE ExerciseID = @ExerciseID AND SessionID = @SessionID;
+                DELETE FROM [Logs] WHERE ExerciseID = @ExerciseID AND SessionID = @SessionID;
+            END
+        """
+        cursor.execute(delete_exercise_from_session_sql)
+        conn.commit()
+
+        add_exercise_to_logs_sql = """
+                CREATE OR ALTER PROCEDURE sp_AddExerciseToLogs
+                    @SessionID INT,
+                    @ExerciseID INT
+                AS
+                BEGIN
+                    SET NOCOUNT ON;
+                    IF NOT EXISTS (
+                        SELECT 1 
+                        FROM [Logs] 
+                        WHERE ExerciseID = @ExerciseID AND SessionID = @SessionID
+                    )
+                    BEGIN
+                        INSERT INTO [Logs] (ExerciseID, SessionID, IsPr) 
+                        VALUES (@ExerciseID, @SessionID, 0);
+                    END
+                END
+            """
+        cursor.execute(add_exercise_to_logs_sql)
+        conn.commit()
+
+        get_trainer_classes_sql = """
+                    CREATE OR ALTER PROCEDURE get_TrainerClasses
+                        @TrainerID INT
+                    AS
+                    BEGIN
+                        SET NOCOUNT ON;
+                        SELECT 
+                            c.ID, 
+                            c.Name, 
+                            p.FName, 
+                            p.LName,
+                            (
+                                SELECT STRING_AGG(CAST(s.Date AS VARCHAR), ', ') 
+                                FROM [Session] s 
+                                WHERE s.ClassID = c.ID
+                            ) AS session_dates,
+                            (
+                                SELECT STRING_AGG(sub.ExName, ', ')
+                                FROM (
+                                    SELECT DISTINCT e.Name AS ExName
+                                    FROM [Logs] l
+                                    JOIN [Exercise] e ON l.ExerciseID = e.ID
+                                    JOIN [Session] s ON l.SessionID = s.ID
+                                    WHERE s.ClassID = c.ID
+                                ) sub
+                            ) AS exercises
+                        FROM [Class] c
+                        JOIN [Teaches] t ON c.ID = t.ClassID
+                        JOIN [Person] p ON t.TrainerID = p.ID
+                        WHERE t.TrainerID = @TrainerID;
+                    END
+                """
+        cursor.execute(get_trainer_classes_sql)
+        conn.commit()
+
+        get_all_classes_sql = """
+                    CREATE OR ALTER PROCEDURE get_AllClasses
+                    AS
+                    BEGIN
+                        SET NOCOUNT ON;
+                        SELECT 
+                            c.ID, 
+                            c.Name, 
+                            p.FName, 
+                            p.LName 
+                        FROM [Class] c
+                        JOIN [Teaches] t ON c.ID = t.ClassID
+                        JOIN [Person] p ON t.TrainerID = p.ID;
+                    END
+                """
+        cursor.execute(get_all_classes_sql)
+        conn.commit()
 
 # create_db(connection_string_master)
 # add_owners(connection_string_master)
 # create_tables(connection_string_database_copy2)
 # seed_data(connection_string_database_copy2)
-create_stored_procedures(connection_string_database_copy2)
+# create_stored_procedures(connection_string_database_copy2)
 # destroy_db(connection_string_master)
