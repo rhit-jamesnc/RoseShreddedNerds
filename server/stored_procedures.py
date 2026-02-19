@@ -53,7 +53,7 @@ def get_person_by_username(connection_string):
     with pyodbc.connect(connection_string) as conn:
         cursor = conn.cursor()
         sql_script = """
-                        CREATE PROCEDURE get_Person_by_Username
+                        CREATE OR ALTER PROCEDURE get_Person_by_Username
                             (
                                 @Username varchar(50)
                             )
@@ -74,7 +74,7 @@ def get_person_by_id(connection_string):
     with pyodbc.connect(connection_string) as conn:
         cursor = conn.cursor()
         sql_script = """
-                        CREATE PROCEDURE get_Person_by_ID
+                        CREATE OR ALTER PROCEDURE get_Person_by_ID
                             (
                                 @ID int
                             )
@@ -130,6 +130,28 @@ def update_person(connection_string):
                                  END
 
                                 """
+        cursor.execute(sql_script)
+        conn.commit()
+
+#Stored procedure to get all existing (non deleted) classes
+def get_AllClasses(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+                        CREATE OR ALTER PROCEDURE get_AllClasses
+                        AS
+                        BEGIN
+                            SET NOCOUNT ON;
+                            SELECT 
+                                c.ID, 
+                                c.Name, 
+                                p.FName, 
+                                p.LName 
+                            FROM [Class] c
+                            JOIN [Teaches] t ON c.ID = t.ClassID
+                            JOIN [Person] p ON t.TrainerID = p.ID;
+                        END
+                     """
         cursor.execute(sql_script)
         conn.commit()
 

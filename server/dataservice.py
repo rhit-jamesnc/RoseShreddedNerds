@@ -11,7 +11,7 @@ load_dotenv()
 server = os.getenv("DB_SERVER")
 database_master = 'master'
 database = os.getenv("DB_NAME")
-database_copy = os.getenv("DB_NAME_COPY", "RoseShreddedNerdsCopy2")
+database_copy = os.getenv("DB_NAME_COPY", "RoseShreddednerdscopy222")
 username = os.getenv("DB_USERNAME")
 password = os.getenv("DB_PASSWORD")
 driver = '{ODBC Driver 17 for SQL Server}'
@@ -62,7 +62,7 @@ class DataService:
         self.server = os.getenv("DB_SERVER")
         self.database_master = 'master'
         self.database = os.getenv("DB_NAME")
-        self.database_copy = 'RoseShreddedNerdsCopy2'
+        self.database_copy = 'RoseShreddednerdscopy2'
         self.username = os.getenv("DB_USERNAME")
         self.password = os.getenv("DB_PASSWORD")
         self.driver = '{ODBC Driver 17 for SQL Server}'

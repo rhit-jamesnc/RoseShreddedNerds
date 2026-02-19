@@ -378,6 +378,8 @@ export default function Dashboard() {
       setStatusMsg({ type: "danger", text: "Failed to load session details" });
     });
 };
+
+  console.log("Current User State:", me);
   
   return (
     <div className="dashboard-page py-3">
@@ -472,7 +474,8 @@ export default function Dashboard() {
         </Col>
       </Row>
 
-      {me?.role === "trainer" && (
+      
+      {me?.role?.toLowerCase() === "trainer" && (
         <Row className="mb-4">
           <Col md={12}>
             <Card className="border-primary shadow-sm">
@@ -791,7 +794,7 @@ export default function Dashboard() {
         </Row>
       )}
 
-      {me?.role === 'student' && (
+      {me?.role?.toLowerCase() === 'student' && (
         <Row className="mb-4">
           <Col md={12}>
             <Card className="shadow-sm border-info">

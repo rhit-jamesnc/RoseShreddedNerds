@@ -14,7 +14,7 @@ print(pyodbc.drivers())
 server = os.getenv("DB_SERVER")
 database_master = 'master'
 database = os.getenv("DB_NAME")
-database_copy2 = 'RoseShreddedNerdscopy'
+database_copy2 = 'RoseShreddednerdscopy2'
 username = os.getenv("DB_USERNAME")
 password = os.getenv("DB_PASSWORD")
 driver = '{ODBC Driver 17 for SQL Server}'
@@ -27,16 +27,16 @@ def create_db(connection_string):
     with pyodbc.connect(connection_string, autocommit=True) as conn:
         cursor = conn.cursor()
         sql_command = """
-                            CREATE DATABASE [RoseShreddedNerdsCopy]
+                            CREATE DATABASE [RoseShreddednerdscopy2]
                             ON
                                     PRIMARY ( NAME=Data,
-                                    FILENAME='/var/opt/mssql/data/RoseShreddedNerdsCopy.mdf',
+                                    FILENAME='/var/opt/mssql/data/RoseShreddednerdscopy2.mdf',
                                     SIZE=20MB,
                                     MAXSIZE=90MB,
                                     FILEGROWTH=12%)
                             LOG ON
                                     ( NAME=Log,
-                                    FILENAME='/var/opt/mssql/data/RoseShreddedNerdsCopy.ldf',
+                                    FILENAME='/var/opt/mssql/data/RoseShreddednerdscopy2.ldf',
                                     SIZE=10MB,
                                     MAXSIZE=30MB,
                                     FILEGROWTH=17%)
@@ -67,9 +67,9 @@ def destroy_db(connection_string):
         # Note the ALTER DATABASE... SQL Line was found online from Google search Gemini AI results because no other source gave the answer clearly
         # What it essentially does is closes any other existing connections to the database to get rid of error "cannot drop...bc currently in USE"
         sql_command = """
-                          ALTER DATABASE [RoseShreddedNerdscopy]
+                          ALTER DATABASE [RoseShreddednerdscopy2]
                           SET SINGLE_USER WITH ROLLBACK IMMEDIATE
-                          DROP DATABASE [RoseShreddedNerdscopy]
+                          DROP DATABASE [RoseShreddednerdscopy2]
                         """
         cursor.execute(sql_command)
         conn.commit()
@@ -340,13 +340,13 @@ def create_stored_procedures(connection_string):
     stored_procedures.get_big3_leaderboard(connection_string)
     stored_procedures.upsert_set(connection_string)
     stored_procedures.get_session_details(connection_string)
+    stored_procedures.get_AllClasses(connection_string)
 
 def create_and_setup_db():
-    create_db(connection_string_master)
-    #add_owners(connection_string_master)
-    create_tables(connection_string_database_copy)
-    #seed_data(connection_string_database_copy)
-    create_stored_procedures(connection_string_database_copy)
+    #create_db(connection_string_master)
+    #create_tables(connection_string_database_copy2)
+    #seed_data(connection_string_database_copy2)
+    create_stored_procedures(connection_string_database_copy2)
 
-#create_and_setup_db()
+create_and_setup_db()
 #destroy_db(connection_string_master)
