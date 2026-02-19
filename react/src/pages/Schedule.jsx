@@ -15,7 +15,7 @@ export default function Schedule() {
   const [endTime, setEndTime] = useState("18:00");
   const [location, setLocation] = useState("SRC main weight room");
   const [note, setNote] = useState("");
-  const [visibility, setVisibility] = useState("SRC main weight room");
+  const [visibility, setVisibility] = useState("friends");
   const [saving, setSaving] = useState(false);
   const [info, setInfo] = useState("");
 
@@ -63,8 +63,9 @@ export default function Schedule() {
 
     // Here I am just creating the payload that will be send as part of the post request
     const payload = {
-      start_time: startStr,
-      end_time: endStr,
+      date: date,
+      start_time: startTime, 
+      end_time: endTime,      
       location: location.trim(),
       note: note.trim(),
       visibility,
@@ -126,7 +127,7 @@ export default function Schedule() {
                     >
                       <div>
                         <div className="fw-semibold">
-                          {slot.start_time} → {slot.end_time}
+                          {slot.date} • {slot.start_time} → {slot.end_time}
                         </div>
                         <div className="text-muted">
                           {slot.location}

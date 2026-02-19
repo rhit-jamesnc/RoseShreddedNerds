@@ -65,7 +65,8 @@ export default function AppNav() {
                             ) : (
                             <>
                                 {/* If the user is logged in/user exists then the navbar will make note of their username/login status */}
-                                <Navbar.Text className="ms-3 me-2">Signed in as <strong>{me.username}</strong></Navbar.Text>
+                                <Navbar.Text className="ms-3 me-2">Signed in as <strong>{me.Username}</strong></Navbar.Text>
+                                <Button variant="outline-dark" className="me-2" onClick={() => navigate("/profile")} sz="sm">Profile</Button>
                                 <Button variant="outline-dark" onClick={handleLogout}>Log out</Button>
                             </>
                         )}
@@ -75,4 +76,3 @@ export default function AppNav() {
         </Navbar>
     );
 }
-

@@ -12,6 +12,7 @@ import Login from "./pages/Login.jsx";
 import Register from "./pages/Register.jsx";
 import PersonalRecords from "./pages/PersonalRecords.jsx";
 import ClassList from "./pages/ClassList.jsx";
+import Profile from "./pages/Profile.jsx";
 
 // Simple function to render a basic 404 not found page
 function NotFound() {
@@ -48,6 +49,7 @@ export default function App() {
           {/* Authentication Routes */}
           <Route path="login" element={<Login />} />
           <Route path="register" element={<Register />} />
+          <Route path="/profile" element={<Profile />} />
 
           <Route path="home" element={<Navigate to="/" replace/>} />
           <Route path="*" element={<NotFound />} />

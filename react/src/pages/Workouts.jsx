@@ -7,12 +7,11 @@ export default function Workouts() {
 
   // Here I am storing the form data
   const [exercises, setExercises] = useState([]);
-  const [recent, setRecent] = useState([]);
 
   // Here I am storing the Form state
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [duration, setDuration] = useState(30);
-  const [rows, setRows] = useState([{ exercise_id: "", weight_kg: "", reps: "", sets: "" }]);
+  const [rows, setRows] = useState([{ name: "", category: "strength", weight_kg: "", reps: "", sets: "" }]);
   const [notes, setNotes] = useState("")
 
   // Storing information about the state of the user interface itself
@@ -23,24 +22,26 @@ export default function Workouts() {
 
   const [validated, setValidated] = useState(false);
 
+  const [scheduleSlots, setScheduleSlots] = useState([]);
+  const [selectedSlotId, setSelectedSlotId] = useState("");
+
   // Here I am loading the set of exercises which are registered, and if none are registered then I am just passing an empty list
   useEffect(() => {
     api("/exercises")
-      .then((resp) => setExercises(resp || []))
-      .catch(() => setExercises([]));
+    .then((resp) => setExercises(Array.isArray(resp?.items) ? resp.items : []))
+    .catch((e) => {
+      console.log("EXERCISES ERROR =", e);
+      setExercises([]);
+    });
     
-    refreshRecent();
+    api("/schedule/slots")
+      .then((resp) => setScheduleSlots(Array.isArray(resp?.items) ? resp.items : []))
+      .catch(() => setScheduleSlots([]));
+
+    
   }, []);
 
-  function refreshRecent() {
-    api("/workouts")
-      .then((resp) => {
-        const items = Array.isArray(resp?.items) ? resp.items : [];
-        console.log("Workouts recent resp:", resp);    
-        setRecent(items);
-      })
-      .catch(() => setRecent([]));
-  }
+  
 
   // These are helper functions which I created for dynamically updating rows
   // I learnt that in React one cannot directly mutate/edit the variable/state so they have to create a copy and then use the setter to assign it to the new updated object
@@ -61,7 +62,7 @@ export default function Workouts() {
 
   function addRow() {
     setRows((oldRows) => {
-      const newRow = { exercise_id: "", weight_kg: "", reps: "", sets: "" };
+      const newRow = { name: "", category: "strength", weight_kg: "", reps: "", sets: "" };
       // This is a clean way of copying old array to a new one and adding the new row to
       return [...oldRows, newRow];
     });
@@ -93,7 +94,7 @@ export default function Workouts() {
     // Doing verification checks on validity of data retrieved
     // Note, that I found this out online that a + infront of a number based string is easiers/fastest way of converting it to a number/int
     for (const r of rows) {
-      if (!r.exercise_id) return false;
+      if (!r.name) return false;
       if (!r.reps || +r.reps < 1) return false;
       if (!r.sets || +r.sets < 1) return false;
       if (r.weight_kg === "" || +r.weight_kg < 0) return false;
@@ -102,6 +103,7 @@ export default function Workouts() {
   }, [date, duration, rows]);
 
   function getValidationError() {
+    if (!selectedSlotId) return "Please select a schedule slot first.";
     if (!date) return "Please select a workout date.";
     const selectedDate = new Date(date);
     const today = new Date();
@@ -114,7 +116,7 @@ export default function Workouts() {
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       const label = `Exercise row ${i + 1}`;
-      if (!r.exercise_id) return `${label}: Please select an exercise.`;
+      if (!r.name) return `${label}: Please select an exercise.`;
       if (!r.reps || +r.reps < 1) return `${label}: Reps must be at least 1.`;
       if (+r.reps > 100) return `${label}: Reps cannot exceed 100 per set.`;
       if (!r.sets || +r.sets < 1) return `${label}: Sets must be at least 1.`;
@@ -143,15 +145,19 @@ export default function Workouts() {
 
       // Here I am simply defining the payload that will be sent as part of the api call to workouts page
       const workoutPayload = {
+        session_id: selectedSlotId ? Number(selectedSlotId) : null,
         date,
         duration_minutes: Number(duration),
         notes: notes.trim(),
         items: rows.map((row) => ({
-          exercise_id: Number(row.exercise_id),
+          name: row.name,
+          category: row.category || "strength",
           weight_kg: Number(row.weight_kg),
           reps: Number(row.reps),
           sets: Number(row.sets),
-        })),
+          session_id: selectedSlotId ? Number(selectedSlotId) : null,
+        }))
+
       };
 
       // Single request – backend handles creating workout + items + PRs
@@ -169,9 +175,9 @@ export default function Workouts() {
       setInfo("Workout has been saved! Nice job 💪.");
 
       // Reset the form
-      setRows([{ exercise_id: "", weight_kg: "", reps: "", sets: "" }]);
+      setRows([{ name: "", category: "strength", weight_kg: "", reps: "", sets: "" }]);
       setNotes("");
-      refreshRecent();
+      setValidated(false);
     } catch (err) {
       setError(err.message || "Failed to save the workout.");
     } finally {
@@ -250,14 +256,23 @@ export default function Workouts() {
                         return (
                           <tr key={idx}>
                             <td>
+                              <div className="small text-muted mb-2">
+                                Exercises loaded: {exercises.length}
+                              </div>
                               <Form.Select
-                                value={r.exercise_id}
-                                onChange={(e) => setRow(idx, { exercise_id: e.target.value })}
-                                isInvalid={validated && !r.exercise_id}
+                                value={r.name}
+                                onChange={(e) => {
+                                  const selectedName = e.target.value;
+                                  const ex = exercises.find((x) => x.name === selectedName);
+                                  setRow(idx, { name: selectedName, category: ex?.category || "strength" });
+                                }}
+                                isInvalid={validated && !r.name}
                               >
                                 <option value="">Select...</option>
                                 {exercises.map((ex) => (
-                                  <option key={ex.id} value={ex.id}>{ex.name}</option>
+                                  <option key={ex.id} value={ex.name}>
+                                    {ex.name}
+                                  </option>
                                 ))}
                               </Form.Select>
                             </td>
@@ -334,7 +349,7 @@ export default function Workouts() {
                 )}
 
                 <div className="d-flex justify-content-end mt-3">
-                  <Button type="submit" variant="maroon" disabled={!canSubmit || saving} >
+                  <Button type="submit" variant="maroon" disabled={!canSubmit || saving || !selectedSlotId}>
                     {saving ? "Saving workout..." : "Save workout"}
                   </Button>
                 </div>
@@ -347,34 +362,29 @@ export default function Workouts() {
           <Card className="workout-side-card shadow-sm mb-3">
             <Card.Body>
               <Card.Title as="h5" className="mb-3">
-                Recent workouts
+                Log workout for a schedule slot
               </Card.Title>
-              {recent.length === 0 && (
-                <p className="text-muted small mb-0">
-                  No workouts logged yet. Your last few sessions will show up
-                  here once you start using ShreddedNerds.
-                </p>
+
+              <Form.Group controlId="slotSelect" className="mb-3">
+                <Form.Label>Pick a slot</Form.Label>
+                <Form.Select
+                  value={selectedSlotId}
+                  onChange={(e) => setSelectedSlotId(e.target.value)}
+                >
+                  <option value="">Select a slot...</option>
+                  {scheduleSlots.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.date} · {s.start_time}-{s.end_time} · {s.location}
+                    </option>
+                  ))}
+                </Form.Select>
+              </Form.Group>
+
+              {!selectedSlotId && (
+                <Alert variant="warning" className="py-2 small mb-0">
+                  You must select a slot before saving a workout.
+                </Alert>
               )}
-              {recent.slice(0, 5).map((w) => {
-                const dateStr = w.date || w.day;
-                return (
-                  <div
-                    key={w.id}
-                    className="d-flex justify-content-between small mb-2"
-                  >
-                    <div>
-                      <div className="fw-semibold">{dateStr}</div>
-                      <div className="text-muted">
-                        {w.duration_minutes} min
-                        {w.notes ? ` · ${w.notes.slice(0, 40)}…` : ""}
-                      </div>
-                    </div>
-                    <div className="text-end text-muted">
-                      <div>ID #{w.id}</div>
-                    </div>
-                  </div>
-                );
-              })}
             </Card.Body>
           </Card>
         </Col>
