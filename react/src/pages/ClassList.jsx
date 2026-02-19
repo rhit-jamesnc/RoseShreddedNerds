@@ -1,19 +1,39 @@
 import { useEffect, useState } from "react";
-import { Card, Container, Table, Badge, Button } from "react-bootstrap";
+import { Card, Container, Table, Badge, Button, Alert } from "react-bootstrap";
 import { api } from "../api";
 
 export default function ClassList() {
   const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [me, setMe] = useState(null);
+  const [status, setStatus] = useState(null);
+  const [joinedClasses, setJoinedClasses] = useState(new Set());
 
   useEffect(() => {
     api("/auth/status")
-      .then((resp) => setMe(resp?.user || null))
+      .then((resp) => {
+        const user = resp?.user || null;
+        setMe(user);
+        if (user?.role === "student" && user?.sql_id) {
+          fetchMyEnrollments(user.sql_id);
+        }
+      })
       .catch(() => setMe(null));
-
+      
     fetchClasses();
   }, []);
+
+  const fetchMyEnrollments = () => {
+    api(`/my-classes`)
+      .then((resp) => {
+        if (Array.isArray(resp)) {
+          // Map the IDs of enrolled classes into a new Set
+          const enrolledIds = new Set(resp.map(c => c.id));
+          setJoinedClasses(enrolledIds);
+        }
+      })
+      .catch((e) => console.error("Failed to load your enrollments", e));
+  };
 
   const fetchClasses = () => {
     setLoading(true);
@@ -28,24 +48,33 @@ export default function ClassList() {
 
   const handleJoinClass = async (classId) => {
     try {
-      const response = await api(`/classes/${classId}/enroll`, {
+      await api(`/classes/${classId}/enroll`, {
         method: "POST",
       });
 
-      if (response.success) {
-        alert("Success! You are now enrolled in the class.");
-      } else {
-        alert(response.error || "Could not enroll in class.");
-      }
+      setJoinedClasses((prev) => new Set(prev).add(classId));
+      setStatus({ type: "success", msg: "Successfully enrolled!" });
+
     } catch (e) {
-      console.error("Enrollment error:", e);
-      alert("An error occurred. Please try again later.");
+      const errorMsg = e.message || "A server error occurred.";
+      setStatus({ type: "danger", msg: errorMsg });
+      
+      if (errorMsg.includes("Already enrolled")) {
+         setJoinedClasses((prev) => new Set(prev).add(classId));
+      }
     }
-  }
+  };
 
   return (
     <Container className="py-4">
       <h2 className="mb-4">Available Classes</h2>
+
+      {status && (
+        <Alert variant={status.type} className="mb-3">
+          {status.msg}
+        </Alert>
+      )}
+
       <Card className="shadow-sm">
         <Card.Body>
           {loading ? (
@@ -63,26 +92,32 @@ export default function ClassList() {
                 </tr>
               </thead>
               <tbody>
-                {classes.map((c) => (
-                  <tr key={c.id}>
-                    <td className="fw-bold">{c.name}</td>
-                    <td>{c.trainer_username || "Unknown"}</td>
-                    <td>
-                      <Badge bg="secondary">#{c.session_id || "N/A"}</Badge>
-                    </td>
-                    <td className="text-end">
-                      {me?.role === "student" && (
-                        <Button 
-                          variant="outline-success" 
-                          size="sm"
-                          onClick={() => handleJoinClass(c.id)}
-                        >
-                          Join Class
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {classes.map((c) => {
+                  const isJoined = joinedClasses.has(c.id);
+
+                  return (
+                    <tr key={c.id}>
+                      <td className="fw-bold">{c.name}</td>
+                      {/* Use trainer_name if that is what your SQL query returns */}
+                      <td>{c.trainer_name || c.trainer_username || "Unknown"}</td>
+                      <td>
+                        <Badge bg="secondary">#{c.id || "N/A"}</Badge>
+                      </td>
+                      <td className="text-end">
+                        {me?.role === "student" && (
+                          <Button
+                            variant={isJoined ? "success" : "outline-success"}
+                            size="sm"
+                            disabled={isJoined}
+                            onClick={() => handleJoinClass(c.id)}
+                          >
+                            {isJoined ? "Enrolled" : "Join Class"}
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </Table>
           )}

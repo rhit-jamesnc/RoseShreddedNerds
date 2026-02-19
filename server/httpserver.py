@@ -368,6 +368,8 @@ def personal_records():
 @app.get('/api/classes')
 @login_required
 def get_all_classes():
+    user = current_user()
+    print(user.get("role"))
     try:
         classes = ds.get_classes()
         return jsonify(classes), 200
@@ -556,8 +558,6 @@ def delete_class_session(class_id):
 @app.get("/api/health")
 def health():
     return jsonify({"ok": True, "time": dataservice.now_iso()})
-
-
 
 # -------------------------------------Main----------------------------------------------
 if __name__ == "__main__":
