@@ -14,7 +14,7 @@ print(pyodbc.drivers())
 server = os.getenv("DB_SERVER")
 database_master = 'master'
 database = os.getenv("DB_NAME")
-database_copy2 = 'RoseShreddedNerdscopy2'
+database_copy2 = 'RoseShreddedNerdscopy'
 username = os.getenv("DB_USERNAME")
 password = os.getenv("DB_PASSWORD")
 driver = '{ODBC Driver 17 for SQL Server}'
@@ -67,9 +67,9 @@ def destroy_db(connection_string):
         # Note the ALTER DATABASE... SQL Line was found online from Google search Gemini AI results because no other source gave the answer clearly
         # What it essentially does is closes any other existing connections to the database to get rid of error "cannot drop...bc currently in USE"
         sql_command = """
-                          ALTER DATABASE [RoseShreddedNerdscopy2]
+                          ALTER DATABASE [RoseShreddedNerdscopy]
                           SET SINGLE_USER WITH ROLLBACK IMMEDIATE
-                          DROP DATABASE [RoseShreddedNerdscopy2]
+                          DROP DATABASE [RoseShreddedNerdscopy]
                         """
         cursor.execute(sql_command)
         conn.commit()

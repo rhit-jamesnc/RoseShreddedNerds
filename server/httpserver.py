@@ -207,6 +207,36 @@ def auth_status():
     current = ds._user()
     return jsonify({"isAuthenticated": bool(current), "user": current})
 
+#-------------------------------Exercises --------------------------------
+@app.get("/api/exercises")
+def exercises_list():
+    return jsonify(ds.list_exercises())
+
+# ----------------------------------- Sets ---------------------------------------------
+
+@app.post("/api/sets")
+@login_required
+def update_exercise_set():
+    error = require_json()
+    if error:
+        return error
+    
+    data = request.get_json()
+    session_id = data.get("SessionID")
+    exercise_id = data.get("ExerciseID")
+    set_num = data.get("SetNumber")
+    weight = data.get("weight")
+    reps = data.get("reps")
+
+    if exercise_id is None or set_num is None or session_id is None:
+        return jsonify({"error": "No Session or Exercise Was Edited, Hit 'Close' Instead"}), 400
+
+    try:
+        ds.trainer_edit_set(session_id, exercise_id, set_num, weight, reps)
+        return jsonify({"success": True}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 #------------------------------------Schedule--------------------------------------------
 @app.get("/api/schedule/slots")
@@ -377,18 +407,23 @@ def get_all_classes():
         return jsonify({"error": str(e)}), 500
 
 @app.post('/api/classes/create')
+@login_required
 def register_class():
+    data = request.get_json(force=True, silent=True)
+    
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except:
+            return jsonify({"error": "Invalid JSON format"}), 400
 
-    error = require_json()
-    if error:
-        return error
-
-    data = request.get_json() or {}
+    if not data or not isinstance(data, dict):
+        return jsonify({"error": "Data must be a JSON object"}), 400
+        
     name = (data.get("name") or "").strip()
 
-    user = ds._user()
-    role = (user.get("role") or "").strip().lower()
-    trainer_sql_id = user.get("sql_id") or user.get("ID")
+    user = current_user()
+    trainer_sql_id = user.get("sql_id")
     role = user.get("role")
 
     if not name:
@@ -406,15 +441,14 @@ def register_class():
 @app.route("/api/classes/<int:class_id>", methods=["DELETE"])
 @login_required
 def delete_class(class_id):
-    user = ds._user()
-    role = (user.get("role") or "").strip().lower()
-    trainer_sql_id = user.get("sql_id") or user.get("ID")
+    user = current_user()
+    trainer_sql_id = user.get("sql_id")
     
-    if role != "trainer" or not trainer_sql_id:
+    if user.get("role") != "trainer" or not trainer_sql_id:
         return jsonify({"error": "Only trainers can delete classes"}), 403
 
     try:
-        result = ds.delete_class(int(trainer_sql_id), int(class_id))
+        result = ds.delete_class(trainer_sql_id, class_id)
         if "error" in result:
             status_code = 403 if "Unauthorized" in result["error"] else 400
             return jsonify(result), status_code
@@ -422,20 +456,20 @@ def delete_class(class_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     
+    
 @app.post("/api/classes/<int:class_id>/enroll")
 @login_required
 def enroll_in_class(class_id):
-    user = ds._user()
-    role = (user.get("role") or "").strip().lower()
-    student_sql_id = user.get("sql_id") or user.get("ID")
+    user = current_user()
     
-    if role != "student":
+    if user.get("role") != "student":
         return jsonify({"error": "Only students can enroll in classes"}), 403
 
+    student_sql_id = user.get("sql_id")
     if not student_sql_id:
         return jsonify({"error": "Student record not found in SQL database"}), 404
 
-    result = ds.enroll_student(int(student_sql_id), int(class_id))
+    result = ds.enroll_student(student_sql_id, class_id)
     
     if "error" in result:
         return jsonify(result), 400
@@ -445,70 +479,64 @@ def enroll_in_class(class_id):
 @app.post("/api/classes/<int:class_id>/unenroll")
 @login_required
 def unenroll_from_class(class_id):
-    user = ds._user()
-    role = (user.get("role") or "").strip().lower()
-    student_sql_id = user.get("sql_id") or user.get("ID")
-
-    if role != "student":
+    user = current_user()
+    if user.get("role") != "student":
         return jsonify({"error": "Only students can unenroll"}), 403
 
-    result = ds.unenroll_student(int(student_sql_id), int(class_id))
+    student_sql_id = user.get("sql_id")
+    result = ds.unenroll_student(student_sql_id, class_id)
+    
     if "error" in result:
         return jsonify(result), 400
+        
     return jsonify(result), 200
 
 @app.get("/api/my-classes")
 @login_required
 def get_my_classes():
-    user = ds._user()
-    role = (user.get("role") or "").strip().lower()
-    student_sql_id = user.get("sql_id") or user.get("ID")
+    user = current_user()
     
-    if role != "student":
+    if user.get("role") != "student":
         return jsonify({"error": "Unauthorized"}), 403
         
+    student_sql_id = user.get("sql_id")
     if not student_sql_id:
         return jsonify({"error": "Student profile not found"}), 404
         
-    classes = ds.get_student_enrollments(int(student_sql_id))
-    return jsonify(classes), 200
+    classes = ds.get_student_enrollments(student_sql_id)
+    return jsonify(classes)
 
 @app.get("/api/trainer-classes")
 @login_required
-def trainer_classes():
-    user = ds._user()
-    role = (user.get("role") or "").strip().lower()
-    trainer_sql_id = user.get("sql_id") or user.get("ID")
+def get_trainer_dashboard_classes():
+    user = current_user()
     
-    if role != "trainer":
+    if user.get("role") != "trainer":
         return jsonify({"error": "Unauthorized"}), 403
+        
+    trainer_sql_id = user.get("sql_id")
     if not trainer_sql_id:
         return jsonify({"error": "Trainer profile not found"}), 404
-    
-    classes = ds.get_trainer_classes(int(trainer_sql_id))
-    return jsonify({"items": classes}), 200
+        
+    classes = ds.get_trainer_classes(trainer_sql_id)
+    return jsonify({"items": classes})
 
-@app.post("/api/classes/<int:class_id>/update-session")
+@app.route("/api/classes/<int:class_id>/update-session", methods=["POST"])
 @login_required
-def update_class_session(class_id):
-    error = require_json()
-    if error:
-        return error
-
-    user = ds._user()
-    role = (user.get("role") or "").strip().lower()
-    if role != "trainer":
-        return jsonify({"error": "Unauthorized"}), 403
-
-    data = request.get_json() or {}
-    session_date = data.get("session_date")
-    exercises = data.get("exercises", [])
+def update_session_route(class_id):
+    data = request.get_json(force=True, silent=True)
+    
+    if not isinstance(data, dict):
+        return jsonify({"error": "Data must be a JSON object"}), 400
+        
+    session_date = data.get('session_date')
+    exercises = data.get('exercises', "")
 
     if not session_date:
         return jsonify({"error": "Missing session_date"}), 400
-
-    result = ds.update_class_session(int(class_id), session_date, exercises)
-
+        
+    result = ds.update_class_session(class_id, session_date, exercises)
+    
     if "error" in result:
         return jsonify(result), 500
     return jsonify(result), 200
@@ -516,43 +544,156 @@ def update_class_session(class_id):
 @app.get("/api/classes/<int:class_id>/sessions")
 @login_required
 def get_class_sessions(class_id):
-    user = ds._user()
-    role = (user.get("role") or "").strip().lower()
-    if role != "trainer":
+    user = current_user()
+    if user.get("role") != "trainer":
         return jsonify({"error": "Unauthorized"}), 403
 
     try:
-        sessions = ds.get_class_sessions(int(class_id))
+        sessions = ds.get_class_sessions(class_id)
         return jsonify({"items": sessions}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.delete("/api/classes/<int:class_id>/delete-session")
+@app.route("/api/classes/<int:class_id>/delete-session", methods=["DELETE"])
 @login_required
-def delete_class_session(class_id):
-    error = require_json()
-    if error:
-        return error
+def delete_class_session_route(class_id):
+    data = request.get_json(force=True, silent=True)
+    
+    if not data:
+        return jsonify({"error": "No JSON data received"}), 400
+        
+    session_date = data.get('session_date')
 
-    user = ds._user()
-    role = (user.get("role") or "").strip().lower()
-    if role != "trainer":
-        return jsonify({"error": "Unauthorized"}), 403
-
-    data = request.get_json() or {}
-    session_date = data.get("session_date")
     if not session_date:
         return jsonify({"error": "Missing session_date"}), 400
 
     try:
-        result = ds.delete_class_session(int(class_id), session_date)
+        result = ds.delete_class_session(class_id, session_date)
+        
         if "error" in result:
             return jsonify(result), 404
+            
+        return jsonify(result), 200
+    except Exception as e:
+        print(f"SERVER ERROR: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.post("/api/sessions/<int:session_id>/update")
+@login_required
+def update_specific_session(session_id):
+    error = require_json()
+    if error:
+        return error
+        
+    data = request.get_json()
+    new_date = data.get("date")
+
+    if not new_date:
+        return jsonify({"error": "Missing date"}), 400
+
+    try:
+        result = ds.update_session_date(session_id, new_date)
         return jsonify(result), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
+@app.get("/api/sessions")
+@login_required
+def list_all_sessions():
+    try:
+        sessions = ds.get_all_sessions_sql() 
+        return jsonify(sessions), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
+@app.post("/api/logs")
+@login_required
+def create_exercise_log():
+    error = require_json()
+    if error: return error
+    
+    data = request.get_json()
+    ex_id = data.get("exercise_id")
+    sess_id = data.get("session_id")
+    is_pr = data.get("is_pr", 0)
 
+    if not ex_id or not sess_id:
+        return jsonify({"error": "Missing exercise_id or session_id"}), 400
+
+    try:
+        result = ds.log_exercise_to_session(ex_id, sess_id, is_pr)
+        return jsonify(result), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.post("/api/exercises")
+@login_required
+def create_exercise():
+    error = require_json()
+    if error: return error
+    
+    data = request.get_json()
+    name = data.get("name")
+    category = data.get("category", "General")
+    
+    if not name:
+        return jsonify({"error": "Name is required"}), 400
+        
+    new_ex = ds.create_exercise(name, category)
+    return jsonify(new_ex), 201
+
+@app.route("/api/sessions/<int:session_id>/exercises/<int:exercise_id>", methods=["DELETE"])
+@login_required
+def delete_session_exercise(session_id, exercise_id):
+    user = current_user()
+    
+    if user.get("role") != "trainer":
+        return jsonify({"error": "Only trainers can modify session exercises"}), 403
+
+    try:
+        result = ds.delete_exercise_from_session(session_id, exercise_id)
+        
+        if "error" in result:
+            return jsonify(result), 404
+            
+        return jsonify(result), 200
+    except Exception as e:
+        print(f"DELETE ERROR: {e}")
+        return jsonify({"error": str(e)}), 500
+    
+@app.route("/api/sessions/<int:session_id>/content", methods=["GET"])
+@login_required
+def get_session_content(session_id):
+    try:
+        content_dict = ds.get_session_content(session_id)
+        content_list = []
+        for name, data in content_dict.items():
+            content_list.append({
+                "name": name,
+                "category": data["category"],
+                "is_pr": data["is_pr"],
+                "sets": data["sets"]
+            })
+            
+        return jsonify(content_list), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
+@app.route('/api/sessions/details', methods=['GET'])
+@login_required
+def get_session_details():
+    date_str = request.args.get('date')
+    class_id = request.args.get('classId')
+    
+    if not date_str or not class_id:
+        return jsonify({"error": "Missing date or classId"}), 400
+
+    try:
+        details = ds.get_session_details_by_date(date_str, class_id)
+        return jsonify(details), 200
+    except Exception as e:
+        print(f"Error fetching session details: {e}")
+        return jsonify({"error": str(e)}), 500
 
 # ----------------------------------- Health ---------------------------------------------
 @app.get("/api/health")
