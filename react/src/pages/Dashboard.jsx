@@ -21,77 +21,41 @@ export default function Dashboard() {
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [confirmDeleteEx, setConfirmDeleteEx] = useState({ exIdx: null });
   const [viewingSession, setViewingSession] = useState(null);
+  const [removedExerciseIds, setRemovedExerciseIds] = useState([]);
 
 
   // Here I am loading the current user and some of their recentmost workouts
   useEffect(() => {
-    api("/auth/status")
-      .then((resp) => {
-        if (resp && resp.user) setMe(resp.user);
-        else setMe(null);
-      })
-      .catch(() => setMe(null));
-
-    api("/workouts")
-      .then((resp) => {
-        // BACKEND RETURNS: { items: [...] }
-        const items = Array.isArray(resp?.items) ? [...resp.items] : [];
-        items.sort((a, b) => {
-          const date_a = (a.date || a.day || "");
-          const date_b = (b.date || b.day || "");
-          if (date_a === date_b) {
-            return (b.created_at || "").localeCompare(a.created_at || "");
-          }
-          return date_b.localeCompare(date_a);
-        });
-        console.log("Dashboard workouts resp:", resp);   // ← debug log
-        setWorkouts(items);
-      })
-      .catch((e) => {
-        console.error(e);
-        setErr("Could not load your workouts.");
-        setWorkouts([]);
-      });
-    api("/dashboard/stats")
-      .then((resp) => {
-        if (resp?.totals) setTotals(resp.totals);
-      })
-      .catch(() => setTotals({ total_minutes: 0, total_sessions: 0 }));
-    
-    api('/exercises')
-      .then(data => setAvailableExercises(data || []))
-      .catch(err => console.error("Exercises load error:", err));
-
-    api('/sessions').then(data => {
-      if (data && data.length > 0) {
-        setCurrentSessionId(data[0].id); 
+    api("/auth/status").then((resp) => {
+      if (resp?.user) {
+        const user = resp.user;
+        setMe(user);
+        const role = user.role?.toLowerCase();
+        if (role === "trainer") {
+          api("/trainer-classes").then(r => { if (r?.items) setMyClasses(r.items); });
+        } else if (role === "student") {
+          api("/my-classes").then(data => {
+            setEnrolledClasses(Array.isArray(data) ? data : (data?.items || []));
+          });
+        }
+      } else {
+        setMe(null);
       }
-    });
+    }).catch(() => setMe(null));
+
+    api("/workouts").then((resp) => {
+      const items = Array.isArray(resp?.items) ? [...resp.items] : [];
+      items.sort((a, b) => (b.date || b.day || "").localeCompare(a.date || a.day || ""));
+      setWorkouts(items);
+    }).catch(() => { setErr("Could not load your workouts."); setWorkouts([]); });
+
+    api("/dashboard/stats").then((resp) => {
+      if (resp?.totals) setTotals(resp.totals);
+    }).catch(() => {});
+
+    api('/exercises').then(data => setAvailableExercises(data || [])).catch(() => {});
+    api('/sessions').then(data => { if (data?.length > 0) setCurrentSessionId(data[0].id); });
   }, []);
-
-  useEffect(() => {
-    console.log("Current User for Class Fetch:", me); // Check this in F12 console
-  if (me?.role === "trainer") {
-    api("/trainer-classes").then(resp => {
-      if (resp?.items) setMyClasses(resp.items);
-    });
-  }
-  }, [me]);
-
-  useEffect(() => {
-    if (me?.role === 'student') {
-      api('/my-classes')
-        .then(data => {
-          console.log("Enrolled classes data:", data);
-          if (Array.isArray(data)) {
-            setEnrolledClasses(data);
-          } else if (data?.items) {
-            setEnrolledClasses(data.items);
-          }
-        })
-        .catch(err => console.error("Failed to load enrolled classes:", err));
-    }
-  }, [me]);
 
 
   // These are helper functions that I created for calculating dashboard based statistics
@@ -217,23 +181,31 @@ export default function Dashboard() {
 
   const handleSaveSession = async (classId) => {
     try {
+      const exercisesToSave = selectedExercises.filter(
+        ex => !removedExerciseIds.includes(ex.id)
+      );
+
       const sessionResp = await api(`/classes/${classId}/update-session`, {
         method: 'POST',
         body: { 
           session_date: editDate,
-          exercises: selectedExercises
+          exercises: exercisesToSave
         }
       });
 
       const realSessionId = sessionResp.session_id;
+      const exerciseIdMap = sessionResp.exercise_id_map || {};
 
-      const allSetPromises = selectedExercises.flatMap((ex) => {
+      const allSetPromises = exercisesToSave.flatMap((ex) => {
+        const realExerciseId = exerciseIdMap[ex.name.trim().toLowerCase()] || ex.id;
+        console.log(`Exercise: ${ex.name}, realExerciseId: ${realExerciseId}, sessionId: ${realSessionId}`);
+
         return ex.sets.map((set, index) => {
           return api('/sets', {
             method: 'POST',
             body: {
               SessionID: realSessionId,
-              ExerciseID: ex.id,
+              ExerciseID: realExerciseId,
               SetNumber: set.setNumber || (index + 1),
               weight: parseFloat(set.weight) || 0,
               reps: parseInt(set.reps) || 0
@@ -334,6 +306,10 @@ export default function Dashboard() {
           method: 'DELETE' 
         });
 
+        if (exerciseId) {
+          setRemovedExerciseIds(prev => [...prev, exerciseId]);
+        }
+
         if (response && response.error) {
           setStatusMsg({ type: "danger", text: response.error });
           return;
@@ -378,8 +354,6 @@ export default function Dashboard() {
       setStatusMsg({ type: "danger", text: "Failed to load session details" });
     });
 };
-
-  console.log("Current User State:", me);
   
   return (
     <div className="dashboard-page py-3">
@@ -542,6 +516,9 @@ export default function Dashboard() {
                                                 try {
                                                   const response = await api(`/sessions/details?date=${targetDate}&classId=${targetId}`);
                                                   if (response && Array.isArray(response)) {
+                                                      if (response.length > 0) {
+                                                          setCurrentSessionId(response[0].session_id);
+                                                      }
                                                       const grouped = response.reduce((acc, row) => {
                                                           let ex = acc.find(e => e.name === row.ExerciseName);
                                                           if (!ex) {
@@ -606,10 +583,12 @@ export default function Dashboard() {
                                 setEditingId(null);
                                 setEditDate("");
                                 setSelectedExercises([]);
+                                setRemovedExerciseIds([]);
                               } else {
                                 setEditingId(c.id);
                                 setEditDate("");
                                 setSelectedExercises([]);
+                                setRemovedExerciseIds([]);
                               }
                             }}
                           >

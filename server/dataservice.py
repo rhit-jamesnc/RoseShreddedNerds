@@ -11,7 +11,7 @@ load_dotenv()
 server = os.getenv("DB_SERVER")
 database_master = 'master'
 database = os.getenv("DB_NAME")
-database_copy = os.getenv("DB_NAME_COPY", "RoseShreddednerdscopy")
+database_copy2 = os.getenv("DB_NAME_copy2", "RoseShreddednerdscopy2")
 username = os.getenv("DB_USERNAME")
 password = os.getenv("DB_PASSWORD")
 driver = '{ODBC Driver 17 for SQL Server}'
@@ -62,14 +62,14 @@ class DataService:
         self.server = os.getenv("DB_SERVER")
         self.database_master = 'master'
         self.database = os.getenv("DB_NAME")
-        self.database_copy = 'RoseShreddednerdscopy'
+        self.database_copy2 = 'RoseShreddednerdscopy2'
         self.username = os.getenv("DB_USERNAME")
         self.password = os.getenv("DB_PASSWORD")
         self.driver = '{ODBC Driver 17 for SQL Server}'
 
         self.connection_string_master = f'DRIVER={self.driver};SERVER={self.server};DATABASE={self.database_master};UID={self.username};PWD={self.password};'
         self.connection_string_database = f'DRIVER={self.driver};SERVER={self.server};DATABASE={self.database};UID={self.username};PWD={self.password};'
-        self.connection_string_database_copy = f'DRIVER={self.driver};SERVER={self.server};DATABASE={self.database_copy};UID={self.username};PWD={self.password};'
+        self.connection_string_database_copy2 = f'DRIVER={self.driver};SERVER={self.server};DATABASE={self.database_copy2};UID={self.username};PWD={self.password};'
 
         self.user = None
     
@@ -93,7 +93,7 @@ class DataService:
         role = role.capitalize()
 
         user_id = None
-        with pyodbc.connect(self.connection_string_database_copy) as conn:
+        with pyodbc.connect(self.connection_string_database_copy2) as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 SET NOCOUNT ON;
@@ -115,7 +115,7 @@ class DataService:
         
     
     def get_user_by_username(self, username):
-        with pyodbc.connect(self.connection_string_database_copy) as conn:
+        with pyodbc.connect(self.connection_string_database_copy2) as conn:
             cursor = conn.cursor()
 
             cursor.execute("{CALL get_Person_by_Username (?)}", username)
@@ -131,13 +131,14 @@ class DataService:
                 "Username": row[3],
                 "PasswordHash": row[4],
                 "DOB": row[5],
-                "Weight": row[6]
+                "Weight": row[6],
+                "role": row[7]
             }
 
             return user_searched
     
     def get_user_by_id(self, user_id):
-        with pyodbc.connect(self.connection_string_database_copy) as conn:
+        with pyodbc.connect(self.connection_string_database_copy2) as conn:
             cursor = conn.cursor()
 
             print("Calling get_person", user_id)
@@ -154,13 +155,14 @@ class DataService:
                 "Username": row[3],
                 "PasswordHash": row[4],
                 "DOB": row[5],
-                "Weight": row[6]
+                "Weight": row[6],
+                "role": row[7]
             }
 
             return user_searched
     
     def update_user(self, ID, FName=None, LName=None, Username=None, PasswordHash=None, DOB=None, Weight=None):
-        with pyodbc.connect(self.connection_string_database_copy) as conn:
+        with pyodbc.connect(self.connection_string_database_copy2) as conn:
             cursor = conn.cursor()
             cursor.execute("{CALL update_person_profile (?, ?, ?, ?, ?, ?, ?)}", ID, FName, LName, Username, PasswordHash, DOB, Weight)
             conn.commit()
@@ -175,7 +177,7 @@ class DataService:
             Visibility = 0
         print("Visibility is", Visibility)
 
-        with pyodbc.connect(self.connection_string_database_copy) as conn:
+        with pyodbc.connect(self.connection_string_database_copy2) as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 SET NOCOUNT ON;
@@ -198,7 +200,7 @@ class DataService:
 
     def list_my_slots(self, ID, num_rows=5):
         slots = []
-        with pyodbc.connect(self.connection_string_database_copy) as conn:
+        with pyodbc.connect(self.connection_string_database_copy2) as conn:
             cursor = conn.cursor()
 
             cursor.execute("{CALL get_schedule_info (?, ?)}", (num_rows, int(ID)))
@@ -227,7 +229,7 @@ class DataService:
     def list_exercises(self):
         exercises = []
         try:
-            with pyodbc.connect(self.connection_string_database_copy) as conn:
+            with pyodbc.connect(self.connection_string_database_copy2) as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT ID, [Name], [Category] FROM [Exercise] ORDER BY [Name] ASC")
                 
@@ -243,7 +245,7 @@ class DataService:
         return exercises
 
     def add_exercise_and_info(self, Name, Category, Duration, SessionID, IsPr, SetNumber, Weight, Reps):
-        with pyodbc.connect(self.connection_string_database_copy) as conn:
+        with pyodbc.connect(self.connection_string_database_copy2) as conn:
             cursor = conn.cursor()
 
             cursor.execute("""
@@ -267,7 +269,7 @@ class DataService:
         items = []
         session_date = None
 
-        with pyodbc.connect(self.connection_string_database_copy) as conn:
+        with pyodbc.connect(self.connection_string_database_copy2) as conn:
             cursor = conn.cursor()
 
             cursor.execute("{CALL get_session_info (?)}", (SessionID))
@@ -292,7 +294,7 @@ class DataService:
         return {"date": session_date, "items": items}
     
     def workout_totals(self, student_id):
-        with pyodbc.connect(self.connection_string_database_copy) as conn:
+        with pyodbc.connect(self.connection_string_database_copy2) as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT
@@ -312,7 +314,7 @@ class DataService:
     def list_exercises_second(self):
         exercises = []
         try:
-            with pyodbc.connect(self.connection_string_database_copy) as conn:
+            with pyodbc.connect(self.connection_string_database_copy2) as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT ID, [Name], [Category] FROM [Exercise] ORDER BY [Name] ASC")
                 
@@ -338,7 +340,7 @@ class DataService:
     # ------------------------------------- Classes and Trainers ---------------------------------------------------
     
     def create_class(self, trainer_id, name):
-        with pyodbc.connect(self.connection_string_database_copy) as conn:
+        with pyodbc.connect(self.connection_string_database_copy2) as conn:
             cursor = conn.cursor()
             try:
                 cursor.execute("{CALL sp_CreateClass (?, ?)}", (trainer_id, name))
@@ -351,7 +353,7 @@ class DataService:
 
     def get_classes(self):
         classes = []
-        with pyodbc.connect(self.connection_string_database_copy) as conn:
+        with pyodbc.connect(self.connection_string_database_copy2) as conn:
             cursor = conn.cursor()
             cursor.execute("{CALL get_AllClasses}")
             for row in cursor.fetchall():
@@ -363,7 +365,7 @@ class DataService:
         return classes
         
     def delete_class(self, trainer_id, class_id):
-        with pyodbc.connect(self.connection_string_database_copy) as conn:
+        with pyodbc.connect(self.connection_string_database_copy2) as conn:
             cursor = conn.cursor()
             cursor.execute("{CALL sp_DeleteClass (?, ?)}", (trainer_id, class_id))
             result = cursor.fetchone()[0]
@@ -376,7 +378,7 @@ class DataService:
     def get_student_enrollments(self, student_sql_id):
         enrolled_classes = []
         try:
-            with pyodbc.connect(self.connection_string_database_copy) as conn:
+            with pyodbc.connect(self.connection_string_database_copy2) as conn:
                 cursor = conn.cursor()
                 cursor.execute("{CALL get_StudentEnrollments (?)}", (student_sql_id,))
                 
@@ -392,7 +394,7 @@ class DataService:
         return enrolled_classes
     
     def get_trainer_classes(self, trainer_id):
-        with pyodbc.connect(self.connection_string_database_copy) as conn:
+        with pyodbc.connect(self.connection_string_database_copy2) as conn:
             cursor = conn.cursor()
             try:
                 cursor.execute("{CALL get_TrainerClasses(?)}", (trainer_id,))
@@ -411,28 +413,39 @@ class DataService:
                 print(f"Database error: {e}")
                 return []
             
-    def unenroll_student(self, student_id, class_id):
+    def enroll_student(self, student_id, class_id):
         try:
-            with pyodbc.connect(self.connection_string_database_copy) as conn:
+            with pyodbc.connect(self.connection_string_database_copy2) as conn:
                 cursor = conn.cursor()
-                cursor.execute('{CALL UnenrollStudent (?,?)}', [student_id, class_id])
+                cursor.execute('{CALL enroll_Student (?, ?)}', [student_id, class_id])
                 conn.commit()
                 return {"success": True}
         except Exception as e:
-            print(f"SQL Error in UnenrollStudent: {e}")
+            print(f"SQL Error in enroll_student: {e}")
+            return {"error": str(e)}
+    
+    def unenroll_student(self, student_id, class_id):
+        try:
+            with pyodbc.connect(self.connection_string_database_copy2) as conn:
+                cursor = conn.cursor()
+                cursor.execute('{CALL UnenrollStudent (?, ?)}', [student_id, class_id])
+                conn.commit()
+                return {"success": True}
+        except Exception as e:
+            print(f"SQL Error in unenroll_student: {e}")
             return {"error": str(e)}
             
     def update_class_session(self, class_id, session_date, exercises):
         if exercises is None: exercises = []
         if isinstance(exercises, str): exercises = [exercises]
         
-        with pyodbc.connect(self.connection_string_database_copy) as conn:
+        with pyodbc.connect(self.connection_string_database_copy2) as conn:
             cursor = conn.cursor()
             try:
                 cursor.execute("{CALL sp_UpdateClassSession (?, ?)}", (int(class_id), session_date))
                 session_id = cursor.fetchone()[0]
 
-                processed_exercise_ids = set()
+                exercise_id_map = {}  # name -> db exercise id
 
                 for ex_data in exercises:
                     if isinstance(ex_data, dict):
@@ -446,19 +459,18 @@ class DataService:
                         continue
 
                     cursor.execute("{CALL sp_UpsertExerciseLog (?, ?, ?)}", (session_id, ex_name, ex_cat))
-                    
                     result = cursor.fetchone()
                     if result:
-                        processed_exercise_ids.add(result[0])
+                        exercise_id_map[ex_name.strip().lower()] = result[0] 
 
                 conn.commit()
-                return {"success": True, "session_id": session_id}
+                return {"success": True, "session_id": session_id, "exercise_id_map": exercise_id_map}
             except Exception as e:
                 conn.rollback()
                 return {"error": str(e)}
-
+            
     def get_class_details(self, class_id):
-        with pyodbc.connect(self.connection_string_database_copy) as conn:
+        with pyodbc.connect(self.connection_string_database_copy2) as conn:
             cursor = conn.cursor()
             query = "SELECT ID, Name FROM [Class] WHERE ID = ?"
             cursor.execute(query, (class_id,))
@@ -469,7 +481,7 @@ class DataService:
         
     def get_class_sessions(self, class_id):
         sessions = {}
-        with pyodbc.connect(self.connection_string_database_copy) as conn:
+        with pyodbc.connect(self.connection_string_database_copy2) as conn:
             cursor = conn.cursor()
             cursor.execute("{CALL get_ClassSessions (?)}", (class_id,))
             for row in cursor.fetchall():
@@ -486,7 +498,7 @@ class DataService:
         return list(sessions.values())
 
     def delete_class_session(self, class_id, session_date):
-        with pyodbc.connect(self.connection_string_database_copy) as conn:
+        with pyodbc.connect(self.connection_string_database_copy2) as conn:
             cursor = conn.cursor()
             cursor.execute("{CALL delete_ClassSession (?, ?)}", (int(class_id), session_date))
             result = cursor.fetchone()[0]
@@ -495,7 +507,7 @@ class DataService:
 
     def update_session_date(self, session_id, new_date):
         try:
-            with pyodbc.connect(self.connection_string_database_copy) as conn:
+            with pyodbc.connect(self.connection_string_database_copy2) as conn:
                 cursor = conn.cursor()
                 sql = "UPDATE [Session] SET [Date] = ? WHERE ID = ?"
                 cursor.execute(sql, (new_date, session_id))
@@ -507,7 +519,7 @@ class DataService:
         
     def log_exercise_to_session(self, exercise_id, session_id, is_pr=0):
         try:
-            with pyodbc.connect(self.connection_string_database_copy) as conn:
+            with pyodbc.connect(self.connection_string_database_copy2) as conn:
                 cursor = conn.cursor()
                 cursor.execute(
                     "INSERT INTO [Logs] (ExerciseID, SessionID, IsPr) VALUES (?, ?, ?)",
@@ -520,7 +532,7 @@ class DataService:
         
     def get_all_sessions_sql(self):
         try:
-            with pyodbc.connect(self.connection_string_database_copy) as conn:
+            with pyodbc.connect(self.connection_string_database_copy2) as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT ID, ClassID, [Date] FROM [Session]")
                 rows = cursor.fetchall()
@@ -538,7 +550,7 @@ class DataService:
             raise e
         
     def create_exercise(self, name, category="General"):
-        with pyodbc.connect(self.connection_string_database_copy) as conn:
+        with pyodbc.connect(self.connection_string_database_copy2) as conn:
             cursor = conn.cursor()
             cursor.execute("{CALL upsert_Exercise (?, ?)}", (name.strip(), category.strip()))
             new_id = cursor.fetchone()[0]
@@ -546,14 +558,14 @@ class DataService:
             return {"id": new_id, "name": name.strip(), "category": category.strip()}
         
     def trainer_edit_set(self, session_id, exercise_id, set_num, weight, reps):
-        with pyodbc.connect(self.connection_string_database_copy) as conn:
+        with pyodbc.connect(self.connection_string_database_copy2) as conn:
             cursor = conn.cursor()
             cursor.execute("{CALL upsert_Set(?, ?, ?, ?, ?)}", 
                         (exercise_id, session_id, set_num, weight, reps))
             conn.commit()
 
     def student_get_session_content(self, session_id):
-        with pyodbc.connect(self.connection_string_database_copy) as conn:
+        with pyodbc.connect(self.connection_string_database_copy2) as conn:
             cursor = conn.cursor()
             cursor.execute("{CALL get_SessionDetails(?)}", (session_id,))
             rows = cursor.fetchall()
@@ -572,7 +584,7 @@ class DataService:
     
     def delete_exercise_from_session(self, session_id, exercise_id):
         try:
-            with pyodbc.connect(self.connection_string_database_copy) as conn:
+            with pyodbc.connect(self.connection_string_database_copy2) as conn:
                 cursor = conn.cursor()
                 cursor.execute("{CALL delete_ExerciseFromSession (?, ?)}", (int(session_id), int(exercise_id)))
                 conn.commit()
@@ -581,7 +593,7 @@ class DataService:
             return {"error": str(e)}
     
     def add_exercise_to_session(self, name, category, session_id, weight, reps, is_pr=0):
-        with pyodbc.connect(self.connection_string_database_copy) as conn:
+        with pyodbc.connect(self.connection_string_database_copy2) as conn:
             cursor = conn.cursor()
             sql = "{CALL add_exercise_and_info (?, ?, ?, ?, ?, ?, ?, ?, ?)}"
             params = (name, category, None, session_id, is_pr, 1, weight, reps)
@@ -590,7 +602,7 @@ class DataService:
 
     def add_exercise_to_logs(self, session_id, exercise_id):
         try:
-            with pyodbc.connect(self.connection_string_database_copy) as conn:
+            with pyodbc.connect(self.connection_string_database_copy2) as conn:
                 cursor = conn.cursor()
                 cursor.execute("{CALL sp_AddExerciseToLogs (?, ?)}", (exercise_id, session_id))
                 conn.commit()
@@ -600,7 +612,7 @@ class DataService:
             return False
 
     def get_session_content(self, session_id):
-        with pyodbc.connect(self.connection_string_database_copy) as conn:
+        with pyodbc.connect(self.connection_string_database_copy2) as conn:
             cursor = conn.cursor()
             cursor.execute("{CALL get_SessionDetails(?)}", (session_id,))
             rows = cursor.fetchall()
@@ -625,7 +637,7 @@ class DataService:
             return workout_data
         
     def get_session_details_by_date(self, date_str, class_id):
-        with pyodbc.connect(self.connection_string_database_copy) as conn:
+        with pyodbc.connect(self.connection_string_database_copy2) as conn:
             cursor = conn.cursor()
             
             find_session_sql = "SELECT ID FROM [Session] WHERE Date = ? AND ClassID = ?"
@@ -640,4 +652,4 @@ class DataService:
             cursor.execute("{CALL get_SessionDetails (?)}", (session_id,))
             
             columns = [column[0] for column in cursor.description]
-            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+            return [{"session_id": session_id, **dict(zip(columns, row))} for row in cursor.fetchall()]
