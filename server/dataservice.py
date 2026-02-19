@@ -189,25 +189,19 @@ class DataService:
             #person_id = int(cursor.fetchone()[0])
 
 
-            cursor.execute( #stored procs w norm inpurts
-                "{CALL add_Person(?, ?, ?, ?, ?, ?, ?)}",
-                first_name,
-                last_name,
-                username,
-                password_hash,
-                dob_param,
-                weight_param,
-                person_type,
-            )
+            # Call stored procedure - it handles INSERT with validation (7 input params, skip OUTPUT)
             cursor.execute(
-                "SELECT TOP 1 ID FROM [Person] WHERE [Username] = ? ORDER BY ID DESC", ##this now directly fetches the created person by username
-                username,
+                "{CALL add_Person (?, ?, ?, ?, ?, ?, ?)}",
+                (first_name, last_name, username, password_hash, dob_param, weight_param, person_type)
             )
-            row = cursor.fetchone() 
+            conn.commit()
+
+            # Get the generated ID using stored procedure
+            cursor.execute("{CALL get_PersonIDByUsername (?)}", (username,))
+            row = cursor.fetchone()
             if not row or row[0] is None:
                 raise RuntimeError("Failed to create user record in SQL Server")
             person_id = int(row[0])
-            conn.commit()
 
         user_id = self._next_id("users")
         user = {
@@ -311,8 +305,16 @@ class DataService:
         try:
             with pyodbc.connect(connection_string_database_copy) as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT ID, [Name], [Category] FROM [Exercise] ORDER BY [Name] ASC")
-                
+                # Use MIN(ID) with GROUP BY to get unique exercises, filter out test data
+                cursor.execute("""
+                    SELECT MIN(ID) AS ID, [Name], [Category]
+                    FROM [Exercise]
+                    WHERE [Category] IS NOT NULL
+                      AND [Name] NOT IN ('Test', 'test10', 'Test2', 'test3', 'test4', 'test9', 'Testy', 'Bench', 'Bench2')
+                    GROUP BY [Name], [Category]
+                    ORDER BY [Name] ASC
+                """)
+
                 for row in cursor.fetchall():
                     exercises.append({
                         "id": row[0],
@@ -598,19 +600,14 @@ class DataService:
         except Exception as e:
             print(f"SQL Error in _ensure_pr_history_table_sql: {e}")
 
-    def _insert_pr_history_row_sql(self, cursor, sql_student_id, exercise_name, best_weight, best_reps, best_1rm): #helper for inserting actual rows
-        cursor.execute("SELECT ID FROM [Exercise] WHERE [Name] = ?", (exercise_name,))
-        ex_row = cursor.fetchone()
-        if not ex_row: #skips if workout like exercise is not found
-            return
-        exercise_id = int(ex_row[0])
-        cursor.execute(
-            """
-            INSERT INTO dbo.PRHistory (StudentID, ExerciseID, [Weight], Reps, OneRM)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (int(sql_student_id), exercise_id, float(best_weight), int(best_reps), float(best_1rm))
-        )
+    def _insert_pr_history_row_sql(self, cursor, sql_student_id, exercise_name, best_weight, best_reps, best_1rm): #helper for inserting actual rows using stored procedure
+        try:
+            cursor.execute(
+                "{CALL insert_PRHistory (?, ?, ?, ?, ?)}",
+                (int(sql_student_id), exercise_name, float(best_weight), int(best_reps), float(best_1rm))
+            )
+        except Exception as e:
+            print(f"Error in insert_PRHistory: {e}") #skips if exercise not found or other error
 
     def get_personal_records_sql(self, sql_student_id):
         records = []
@@ -628,26 +625,12 @@ class DataService:
                 })
         return records
 
-    def get_pr_progression_sql(self, sql_student_id): #new api to read PR hist
+    def get_pr_progression_sql(self, sql_student_id): #new api to read PR hist using stored procedure
         items = []
         self._ensure_pr_history_table_sql()
         with pyodbc.connect(connection_string_database_copy) as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT
-                    e.Name AS ExerciseName,
-                    h.[Weight],
-                    h.Reps,
-                    h.OneRM,
-                    h.RecordedAt
-                FROM dbo.PRHistory h
-                JOIN [Exercise] e ON h.ExerciseID = e.ID
-                WHERE h.StudentID = ?
-                ORDER BY e.Name ASC, h.RecordedAt ASC
-                """,
-                (sql_student_id,),
-            )
+            cursor.execute("{CALL get_PRProgression (?)}", (sql_student_id,))
             for row in cursor.fetchall():
                 items.append(
                     {
@@ -660,16 +643,17 @@ class DataService:
                 )
         return items
 
-    def _exercise_exists_sql(self, exercise_id): #checke for the existance of the exercise
+    def _exercise_exists_sql(self, exercise_id): #check for the existence of the exercise using stored procedure
         with pyodbc.connect(connection_string_database_copy) as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT 1 FROM [Exercise] WHERE ID = ?", (int(exercise_id),))
-            return cursor.fetchone() is not None
+            cursor.execute("{CALL check_ExerciseExists (?)}", (int(exercise_id),))
+            row = cursor.fetchone()
+            return row[0] == 1 if row else False
 
-    def _exercise_name_by_id_sql(self, exercise_id):
+    def _exercise_name_by_id_sql(self, exercise_id): #get exercise name using stored procedure
         with pyodbc.connect(connection_string_database_copy) as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT [Name] FROM [Exercise] WHERE ID = ?", (int(exercise_id),))
+            cursor.execute("{CALL get_ExerciseName (?)}", (int(exercise_id),))
             row = cursor.fetchone()
             return row[0] if row else None
 
@@ -692,28 +676,9 @@ class DataService:
         with pyodbc.connect(connection_string_database_copy) as conn:
             cursor = conn.cursor()
             for exercise_name in names:
-                cursor.execute(
-                    """
-                    SELECT
-                        p.Username,
-                        p.FName,
-                        p.LName,
-                        (pr.Weight * (1.0 + pr.Reps / 30.0)) AS Best1RM
-                    FROM [PersonalRecord] pr
-                    JOIN [Achieves] a ON pr.ID = a.PersonalRecordID
-                    JOIN [Of] o ON pr.ID = o.PersonalRecordID
-                    JOIN [Exercise] e ON o.ExerciseID = e.ID
-                    JOIN [Student] s ON a.StudentID = s.ID
-                    JOIN [Person] p ON s.ID = p.ID
-                    WHERE e.Name = ?
-                    ORDER BY Best1RM DESC, p.Username ASC
-                    """,
-                    (exercise_name,),
-                )
+                cursor.execute("{CALL get_ExerciseLeaderboard (?, ?)}", (exercise_name, limit))
                 rows = []
                 for idx, row in enumerate(cursor.fetchall(), start=1):
-                    if idx > limit:
-                        break
                     rows.append(
                         {
                             "rank": idx,

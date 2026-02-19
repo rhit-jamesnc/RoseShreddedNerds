@@ -675,6 +675,160 @@ def create_stored_procedures(connection_string):
         cursor.execute(delete_session_sql)
         conn.commit()
 
+        # Stored procedure to insert PR history row
+        insert_pr_history_sql = """
+            CREATE OR ALTER PROCEDURE insert_PRHistory
+                @StudentID INT,
+                @ExerciseName VARCHAR(100),
+                @Weight DECIMAL(7,2),
+                @Reps INT,
+                @OneRM DECIMAL(10,2)
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+
+                DECLARE @ExerciseID INT;
+                SELECT @ExerciseID = ID FROM [Exercise] WHERE [Name] = @ExerciseName;
+
+                IF @ExerciseID IS NULL
+                BEGIN
+                    THROW 51000, 'Exercise not found', 1;
+                END
+
+                IF @StudentID IS NULL OR @Weight IS NULL OR @Reps IS NULL
+                BEGIN
+                    THROW 51001, 'Invalid parameters: StudentID, Weight, and Reps are required', 1;
+                END
+
+                INSERT INTO dbo.PRHistory (StudentID, ExerciseID, [Weight], Reps, OneRM)
+                VALUES (@StudentID, @ExerciseID, @Weight, @Reps, @OneRM);
+            END
+        """
+        cursor.execute(insert_pr_history_sql)
+        conn.commit()
+
+        # Stored procedure to get PR progression history
+        get_pr_progression_sql = """
+            CREATE OR ALTER PROCEDURE get_PRProgression
+                @StudentID INT
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+
+                IF @StudentID IS NULL
+                BEGIN
+                    THROW 51000, 'StudentID is required', 1;
+                END
+
+                SELECT
+                    e.Name AS ExerciseName,
+                    h.[Weight],
+                    h.Reps,
+                    h.OneRM,
+                    h.RecordedAt
+                FROM dbo.PRHistory h
+                JOIN [Exercise] e ON h.ExerciseID = e.ID
+                WHERE h.StudentID = @StudentID
+                ORDER BY e.Name ASC, h.RecordedAt ASC;
+            END
+        """
+        cursor.execute(get_pr_progression_sql)
+        conn.commit()
+
+        # Stored procedure to check if exercise exists
+        check_exercise_exists_sql = """
+            CREATE OR ALTER PROCEDURE check_ExerciseExists
+                @ExerciseID INT
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+
+                IF @ExerciseID IS NULL
+                BEGIN
+                    SELECT 0 AS ExerciseExists;
+                    RETURN;
+                END
+
+                IF EXISTS (SELECT 1 FROM [Exercise] WHERE ID = @ExerciseID)
+                    SELECT 1 AS ExerciseExists;
+                ELSE
+                    SELECT 0 AS ExerciseExists;
+            END
+        """
+        cursor.execute(check_exercise_exists_sql)
+        conn.commit()
+
+        # Stored procedure to get exercise name by ID
+        get_exercise_name_sql = """
+            CREATE OR ALTER PROCEDURE get_ExerciseName
+                @ExerciseID INT
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+
+                IF @ExerciseID IS NULL
+                BEGIN
+                    THROW 51000, 'ExerciseID is required', 1;
+                END
+
+                SELECT [Name] FROM [Exercise] WHERE ID = @ExerciseID;
+            END
+        """
+        cursor.execute(get_exercise_name_sql)
+        conn.commit()
+
+        # Stored procedure to get exercise leaderboard for a specific exercise
+        get_exercise_leaderboard_sql = """
+            CREATE OR ALTER PROCEDURE get_ExerciseLeaderboard
+                @ExerciseName VARCHAR(100),
+                @Limit INT = 10
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+
+                IF @ExerciseName IS NULL
+                BEGIN
+                    THROW 51000, 'ExerciseName is required', 1;
+                END
+
+                SELECT TOP (@Limit)
+                    p.Username,
+                    p.FName,
+                    p.LName,
+                    (pr.Weight * (1.0 + pr.Reps / 30.0)) AS Best1RM
+                FROM [PersonalRecord] pr
+                JOIN [Achieves] a ON pr.ID = a.PersonalRecordID
+                JOIN [Of] o ON pr.ID = o.PersonalRecordID
+                JOIN [Exercise] e ON o.ExerciseID = e.ID
+                JOIN [Student] s ON a.StudentID = s.ID
+                JOIN [Person] p ON s.ID = p.ID
+                WHERE e.Name = @ExerciseName
+                ORDER BY Best1RM DESC, p.Username ASC;
+            END
+        """
+        cursor.execute(get_exercise_leaderboard_sql)
+        conn.commit()
+
+
+        # Stored procedure to get person ID by username
+        get_person_id_sql = """
+            CREATE OR ALTER PROCEDURE get_PersonIDByUsername
+                @Username VARCHAR(50)
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+
+                IF @Username IS NULL
+                BEGIN
+                    THROW 51000, 'Username is required', 1;
+                END
+
+                SELECT TOP 1 ID FROM [Person] WHERE [Username] = @Username ORDER BY ID DESC;
+            END
+        """
+        cursor.execute(get_person_id_sql)
+        conn.commit()
+
 
 # OLD (commented out): this used to run on import and could drop/recreate the DB
 # without warning. We left it here for reference but keep it disabled now.
