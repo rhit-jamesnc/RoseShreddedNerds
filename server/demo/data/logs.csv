@@ -1,0 +1,37 @@
+session_code,exercise_name,is_pr
+S1,Leg Press,0
+S1,Bench Press,0
+S2,Lunge,0
+S2,Barbell Row,0
+S3,Plank,0
+S3,Bench Press,0
+S4,Bicep Curl,0
+S4,Squat,0
+S5,Lunge,0
+S5,Bicep Curl,0
+S6,Lunge,0
+S6,Leg Press,0
+S7,Barbell Row,0
+S7,Bicep Curl,0
+S8,Barbell Row,0
+S8,Overhead Press,0
+S9,Deadlift,0
+S9,Overhead Press,0
+S10,Overhead Press,0
+S10,Plank,0
+S11,Tricep Extension,0
+S11,Barbell Row,0
+S12,Barbell Row,0
+S12,Tricep Extension,0
+S13,Barbell Row,0
+S13,Lat Pulldown,0
+S14,Deadlift,0
+S14,Lat Pulldown,0
+S15,Overhead Press,0
+S15,Pull Up,0
+S16,Squat,0
+S16,Bench Press,0
+S17,Tricep Extension,0
+S17,Deadlift,0
+S18,Plank,0
+S18,Lat Pulldown,0

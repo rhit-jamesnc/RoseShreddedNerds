@@ -1,0 +1,109 @@
+session_code,exercise_name,set_number,weight,reps
+S1,Plank,1,185,5
+S1,Plank,2,135,8
+S1,Plank,3,205,10
+S1,Leg Press,1,275,10
+S1,Leg Press,2,245,6
+S1,Leg Press,3,135,6
+S2,Pull Up,1,275,12
+S2,Pull Up,2,225,8
+S2,Pull Up,3,115,6
+S2,Leg Press,1,95,8
+S2,Leg Press,2,155,10
+S2,Leg Press,3,155,10
+S3,Deadlift,1,205,8
+S3,Deadlift,2,135,12
+S3,Deadlift,3,225,10
+S3,Leg Press,1,245,8
+S3,Leg Press,2,245,6
+S3,Leg Press,3,135,12
+S4,Squat,1,225,6
+S4,Squat,2,135,12
+S4,Squat,3,245,6
+S4,Barbell Row,1,205,8
+S4,Barbell Row,2,205,12
+S4,Barbell Row,3,115,6
+S5,Tricep Extension,1,135,12
+S5,Tricep Extension,2,225,12
+S5,Tricep Extension,3,135,6
+S5,Overhead Press,1,245,5
+S5,Overhead Press,2,245,10
+S5,Overhead Press,3,155,10
+S6,Plank,1,115,5
+S6,Plank,2,205,12
+S6,Plank,3,95,5
+S6,Overhead Press,1,185,6
+S6,Overhead Press,2,225,8
+S6,Overhead Press,3,185,10
+S7,Squat,1,135,10
+S7,Squat,2,245,5
+S7,Squat,3,155,10
+S7,Plank,1,245,5
+S7,Plank,2,225,12
+S7,Plank,3,245,12
+S8,Tricep Extension,1,115,10
+S8,Tricep Extension,2,95,6
+S8,Tricep Extension,3,275,10
+S8,Overhead Press,1,185,5
+S8,Overhead Press,2,275,8
+S8,Overhead Press,3,275,10
+S9,Bicep Curl,1,135,10
+S9,Bicep Curl,2,115,6
+S9,Bicep Curl,3,115,10
+S9,Overhead Press,1,205,5
+S9,Overhead Press,2,115,12
+S9,Overhead Press,3,155,12
+S10,Bicep Curl,1,205,6
+S10,Bicep Curl,2,225,5
+S10,Bicep Curl,3,205,12
+S10,Lat Pulldown,1,115,10
+S10,Lat Pulldown,2,245,12
+S10,Lat Pulldown,3,185,5
+S11,Bench Press,1,275,6
+S11,Bench Press,2,115,8
+S11,Bench Press,3,275,12
+S11,Leg Press,1,205,5
+S11,Leg Press,2,95,10
+S11,Leg Press,3,245,6
+S12,Pull Up,1,245,10
+S12,Pull Up,2,245,12
+S12,Pull Up,3,245,5
+S12,Deadlift,1,95,10
+S12,Deadlift,2,185,6
+S12,Deadlift,3,205,5
+S13,Barbell Row,1,155,8
+S13,Barbell Row,2,115,8
+S13,Barbell Row,3,135,10
+S13,Plank,1,245,10
+S13,Plank,2,115,5
+S13,Plank,3,275,8
+S14,Leg Press,1,185,12
+S14,Leg Press,2,135,8
+S14,Leg Press,3,135,12
+S14,Tricep Extension,1,245,5
+S14,Tricep Extension,2,115,6
+S14,Tricep Extension,3,275,12
+S15,Overhead Press,1,185,6
+S15,Overhead Press,2,115,10
+S15,Overhead Press,3,115,12
+S15,Deadlift,1,225,6
+S15,Deadlift,2,95,5
+S15,Deadlift,3,115,8
+S16,Tricep Extension,1,135,5
+S16,Tricep Extension,2,185,12
+S16,Tricep Extension,3,225,8
+S16,Bicep Curl,1,225,12
+S16,Bicep Curl,2,155,10
+S16,Bicep Curl,3,205,5
+S17,Pull Up,1,95,10
+S17,Pull Up,2,185,12
+S17,Pull Up,3,135,6
+S17,Lunge,1,185,10
+S17,Lunge,2,155,12
+S17,Lunge,3,225,12
+S18,Squat,1,135,5
+S18,Squat,2,225,5
+S18,Squat,3,115,8
+S18,Barbell Row,1,155,12
+S18,Barbell Row,2,275,12
+S18,Barbell Row,3,225,10
