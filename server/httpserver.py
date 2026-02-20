@@ -26,9 +26,17 @@ def index():
 def spa_catch__all(path):
     # In this function, I am serving index.html for any non-API path so React Router can handle it
     # If it is an /api/...path, then I am making use of my normal 404 handler
-
+    
+    # Don't catch API requests
     if path.startswith("api/"):
         return not_found(None)
+    
+    # Check if the file exists in static folder (assets, images, etc.)
+    file_path = os.path.join(app.static_folder, path)
+    if os.path.isfile(file_path):
+        return send_from_directory(app.static_folder, path)
+    
+    # For all other routes, serve index.html so React Router can handle them
     return send_from_directory(app.static_folder, "index.html")
 
 def current_user():
@@ -213,6 +221,7 @@ def update_profile():
     
     except Exception as e:
         #return jsonify({"error": "Failed to update profile", "details": str(e)}), 500
+        print(str(e))
         return jsonify({"error": str(e), "details": str(e)}), 500
 
 
@@ -232,8 +241,8 @@ def auth_status():
 #-------------------------------Exercises --------------------------------
 @app.get("/api/exercises")
 def exercises_list():
-    items = ds.list_exercises()
-    return jsonify({"items": items})
+    items = ds.list_exercises_for_dropdown()
+    return jsonify({"items": items}), 200
 
 # ----------------------------------- Sets ---------------------------------------------
 
@@ -352,19 +361,18 @@ def log_workout_for_session():
             if not name or sets < 1 or reps < 1 or weight is None:
                 return jsonify({"error": "Each exercise must include name, sets>=1, reps>=1, and weight."}), 400
 
-
-            for set_num in range(1, sets + 1):
-                new_id = ds.add_exercise_and_info(
-                    Name=name,
-                    Category=category,
-                    Duration=duration if duration is not None else None,
-                    SessionID=int(session_id),
-                    IsPr=1 if is_pr else 0,
-                    SetNumber=set_num,
-                    Weight=float(weight),
-                    Reps=int(reps)
-                )
-                created_exercise_ids.append(new_id)
+            # Add the exercise once with the total number of sets
+            new_id = ds.add_exercise_and_info(
+                Name=name,
+                Category=category,
+                Duration=duration if duration is not None else None,
+                SessionID=int(session_id),
+                IsPr=1 if is_pr else 0,
+                SetNumber=sets,
+                Weight=float(weight),
+                Reps=int(reps)
+            )
+            created_exercise_ids.append(new_id)
 
             pr = ds._maybe_update_pr_sql(int(user_id), name, float(weight), int(reps))
             if pr:
@@ -746,6 +754,7 @@ def viewer_sessions():
         items = ds.viewer_list_sessions(int(user_id))
         return jsonify({"items": items}), 200
     except Exception as e:
+        print(str(e))
         return jsonify({"error": str(e)}), 500
 
 @app.get("/api/viewer/sessions/<int:session_id>")
@@ -758,28 +767,32 @@ def viewer_session_detail(session_id):
         data = ds.viewer_get_session_full(int(user_id), int(session_id))
         return jsonify({"session": data}), 200
     except Exception as e:
+        print(str(e))
         return jsonify({"error": str(e)}), 500
 
 @app.put("/api/viewer/sessions/<int:session_id>")
+@login_required
 def viewer_update_session(session_id):
-    user_id = session.get("user_id")
-    if not user_id:
+    user = current_user()
+    if not user:
         return jsonify({"error": "Unauthorized"}), 401
 
     data = request.get_json() or {}
+    print(data, type(data))
 
     try:
         ds.viewer_update_session(
             session_id=int(session_id),
-            date=data.get("date"),
-            start_time=data.get("start_time"),
-            end_time=data.get("end_time"),
-            location=data.get("location"),
-            notes=data.get("notes"),
+            date=data.get("date").strip(),
+            start_time=data.get("start_time").strip(),
+            end_time=data.get("end_time").strip(),
+            location=data.get("location").strip(),
+            notes=data.get("notes").strip(),
             visibility=data.get("visibility"),
         )
         return jsonify({"success": True}), 200
     except Exception as e:
+        print("error", str(e), user.get("ID"), data, type(data))
         return jsonify({"error": str(e)}), 500
 
 @app.put("/api/viewer/exercise")

@@ -92,14 +92,14 @@ export default function WorkoutViewer() {
 
       await api(`/viewer/sessions/${selectedId}`, {
         method: "PUT",
-        body: JSON.stringify({
+        body: {
           date: date,
           start_time: startTime,
           end_time: endTime,
           location: location,
           notes: notes,
           visibility: visBit,
-        }),
+        },
       });
 
       setStatusMsg({ type: "success", text: "Session details updated." });
@@ -177,13 +177,13 @@ export default function WorkoutViewer() {
     try {
       await api("/viewer/exercise", {
         method: "PUT",
-        body: JSON.stringify({
+        body: {
           session_id: Number(selectedId),
           exercise_id: Number(exerciseId),
           set_number: Number(setNumber),
           weight: cur.weight === "" ? null : Number(cur.weight),
           reps: cur.reps === "" ? null : Number(cur.reps),
-        }),
+        },
       });
 
       setStatusMsg({ type: "success", text: `Updated set ${setNumber}.` });

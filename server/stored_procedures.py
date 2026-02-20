@@ -300,15 +300,15 @@ def update_exercise(connection_string):
                         AS
                         BEGIN
 
-                                IF @SessionID IS NULL OR (SELECT 1 FROM Session WHERE ID = @SessionID) = 0
+                                IF @SessionID IS NULL OR (SELECT 1 FROM Session WHERE ID = @SessionID) < 1
                                 BEGIN;
                                     THROW 51000, 'Session not found', 1
                                 END
-                                IF @ExerciseID IS NULL OR (SELECT 1 FROM Exercise WHERE ID = @ExerciseID) = 0
+                                IF @ExerciseID IS NULL OR (SELECT 1 FROM Exercise WHERE ID = @ExerciseID) < 1
                                 BEGIN;
                                     THROW 51001, 'Exercise not found', 1
                                 END
-                                IF @SetNumber IS NULL OR (SELECT 1 FROM [Set] WHERE SetNumber = @SetNumber) = 0
+                                IF @SetNumber IS NULL OR (SELECT 1 FROM [Set] WHERE SetNumber = @SetNumber) < 1
                                 BEGIN;
                                     THROW 51002, 'Exercise Set not found', 1
                                 END

@@ -1068,9 +1068,24 @@ class DataService:
 
         with pyodbc.connect(self.connection_string_database_copy) as conn:
             cursor = conn.cursor()
+            print(int(session_id), int(exercise_id), int(set_number), weight, reps)
             cursor.execute(
                 "{CALL update_exercise (?, ?, ?, ?, ?)}",
                 (int(session_id), int(exercise_id), int(set_number), weight, reps)
             )
             conn.commit()
         return {"success": True}
+    
+    def list_exercises_for_dropdown(self):
+        items = []
+        i = 1
+
+        for (name, category) in WEIGHT_EXERCISES:
+            items.append({
+                "id": i,
+                "name": name,
+                "category": category
+            })
+            i += 1
+
+        return items

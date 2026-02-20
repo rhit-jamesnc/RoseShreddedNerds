@@ -185,11 +185,6 @@ export default function Workouts() {
     }
   }
 
-  function exerciseNameById(id) {
-    const exercise = exercises.find((exercise) => exercise.id === id);
-    return exercise ? exercise.name : `#${id}`;
-  }
-
   function prLabel(pr) {
     if (pr?.exercise_name) return pr.exercise_name;
     if (pr?.exercise_id) return prLabel(pr);
