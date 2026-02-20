@@ -48,6 +48,7 @@ export default function AppNav() {
                         <Nav.Link as={NavLink} to="/personal-records">My PRs</Nav.Link>
                         <Nav.Link as={NavLink} to="/schedule">Schedule</Nav.Link>
                         <Nav.Link as={NavLink} to="/workouts">Log Workouts</Nav.Link>
+                        <Nav.Link as={NavLink} to="/workout-viewer">Workout Viewer</Nav.Link>
                     </Nav>
 
                     {/* This side would contain additional pages/links and Auth pages*/}

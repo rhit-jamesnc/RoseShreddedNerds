@@ -13,6 +13,7 @@ import Register from "./pages/Register.jsx";
 import PersonalRecords from "./pages/PersonalRecords.jsx";
 import ClassList from "./pages/ClassList.jsx";
 import Profile from "./pages/Profile.jsx";
+import WorkoutViewer from "./pages/WorkoutViewer";
 
 // Simple function to render a basic 404 not found page
 function NotFound() {
@@ -42,6 +43,7 @@ export default function App() {
           <Route path="personal-records" element={<PersonalRecords />} />
           <Route path="schedule" element={<Schedule />} />
           <Route path="workouts" element={<Workouts />} />
+          <Route path="/workout-viewer" element={<WorkoutViewer />} />
 
           {/* these are the other pages of my web-app */}
           <Route path="about" element={<About />} />

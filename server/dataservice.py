@@ -905,5 +905,172 @@ class DataService:
 
             cursor.execute("{CALL get_SessionDetails (?)}", (session_id,))
 
-            columns = [column[0] for column in cursor.description]
-            return [{"session_id": session_id, **dict(zip(columns, row))} for row in cursor.fetchall()]
+            rows_out = []
+            all_rows = cursor.fetchall()
+
+            columns = []
+            for col in cursor.description:
+                columns.append(col[0])
+
+            for row in all_rows:
+                row_dict = {"session_id": session_id}
+
+                for i in range(len(columns)):
+                    row_dict[columns[i]] = row[i]
+
+                rows_out.append(row_dict)
+
+            return rows_out
+    
+    def viewer_list_sessions(self, student_id):
+        result = []
+
+        with pyodbc.connect(self.connection_string_database_copy) as conn:
+            cursor = conn.cursor()
+
+            # Past sessions (ones which would actually allow me to edit exercises)
+            cursor.execute("{CALL get_sessions_in_past (?)}", (int(student_id),))
+            rows = cursor.fetchall()
+            for row in rows:
+                
+                sid = int(row[0])
+                cursor2 = conn.cursor()
+                cursor2.execute("""
+                    SELECT ID, [Date], StartTime, EndTime, [Location], Notes, Visibility
+                    FROM [Session]
+                    WHERE ID = ?
+                """, (sid,))
+                srow = cursor2.fetchone()
+                if srow:
+                    item = {
+                        "id": int(srow[0]),
+                        "date": srow[1].strftime("%Y-%m-%d") if srow[1] else "",
+                        "start_time": srow[2].strftime("%H:%M") if srow[2] else "",
+                        "end_time": srow[3].strftime("%H:%M") if srow[3] else "",
+                        "location": srow[4] or "",
+                        "notes": srow[5] or "",
+                        "visibility": bool(srow[6]) if srow[6] is not None else False,
+                        "is_future": False
+                    }
+                    result.append(item)
+
+            # Here basically am adding future sessions
+            cursor.execute("{CALL get_sessions_in_future (?)}", (int(student_id),))
+            rows = cursor.fetchall()
+            for row in rows:
+                sid = int(row[0])
+                cursor2 = conn.cursor()
+                cursor2.execute("""
+                    SELECT ID, [Date], StartTime, EndTime, [Location], Notes, Visibility
+                    FROM [Session]
+                    WHERE ID = ?
+                """, (sid,))
+                srow = cursor2.fetchone()
+                if srow:
+                    item = {
+                        "id": int(srow[0]),
+                        "date": srow[1].strftime("%Y-%m-%d") if srow[1] else "",
+                        "start_time": srow[2].strftime("%H:%M") if srow[2] else "",
+                        "end_time": srow[3].strftime("%H:%M") if srow[3] else "",
+                        "location": srow[4] or "",
+                        "notes": srow[5] or "",
+                        "visibility": bool(srow[6]) if srow[6] is not None else False,
+                        "is_future": True
+                    }
+                    result.append(item)
+
+        n = len(result)
+        i = 0
+        while i < n:
+            j = i + 1
+            while j < n:
+                a = result[i]
+                b = result[j]
+                swap = False
+
+                if b["date"] > a["date"]:
+                    swap = True
+                elif b["date"] == a["date"] and b["start_time"] > a["start_time"]:
+                    swap = True
+
+                if swap:
+                    temp = result[i]
+                    result[i] = result[j]
+                    result[j] = temp
+                j += 1
+            i += 1
+
+        return result
+
+    def viewer_get_session_full(self, student_id, session_id):
+        with pyodbc.connect(self.connection_string_database_copy) as conn:
+            cursor = conn.cursor()
+
+            cursor.execute("SELECT StudentID FROM [Session] WHERE ID = ?", (int(session_id),))
+            owner = cursor.fetchone()
+            if not owner or int(owner[0]) != int(student_id):
+                raise RuntimeError("Unauthorized session access")
+
+            cursor.execute("""
+                SELECT ID, [Date], StartTime, EndTime, [Location], Notes, Visibility
+                FROM [Session]
+                WHERE ID = ?
+            """, (int(session_id),))
+            srow = cursor.fetchone()
+            if not srow:
+                raise RuntimeError("Session not found")
+
+            session_obj = {
+                "id": int(srow[0]),
+                "date": srow[1].strftime("%Y-%m-%d") if srow[1] else "",
+                "start_time": srow[2].strftime("%H:%M") if srow[2] else "",
+                "end_time": srow[3].strftime("%H:%M") if srow[3] else "",
+                "location": srow[4] or "",
+                "notes": srow[5] or "",
+                "visibility": bool(srow[6]) if srow[6] is not None else False,
+                "items": []
+            }
+
+            cursor.execute("""
+                SELECT e.ID AS ExerciseID, e.[Name], e.Category, l.IsPr, s.SetNumber, s.[Weight], s.Reps
+                FROM Logs l
+                JOIN Exercise e ON e.ID = l.ExerciseID
+                JOIN [Set] s ON s.ExerciseID = e.ID
+                WHERE l.SessionID = ?
+                ORDER BY e.[Name], s.SetNumber
+            """, (int(session_id),))
+
+            rows = cursor.fetchall()
+            for row in rows:
+                session_obj["items"].append({
+                    "exercise_id": int(row[0]),
+                    "name": row[1],
+                    "category": row[2],
+                    "is_pr": bool(row[3]),
+                    "set_number": int(row[4]),
+                    "weight": float(row[5]) if row[5] is not None else None,
+                    "reps": int(row[6]) if row[6] is not None else None
+                })
+
+            return session_obj
+    
+    def viewer_update_session(self, session_id, date=None, start_time=None, end_time=None, location=None, notes=None, visibility=None):
+        with pyodbc.connect(self.connection_string_database_copy) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "{CALL update_session (?, ?, ?, ?, ?, ?, ?)}",
+                (int(session_id), date, start_time, end_time, location, notes, visibility)
+            )
+            conn.commit()
+        return {"success": True}
+    
+    def viewer_update_exercise(self, session_id, exercise_id, set_number, weight=None, reps=None):
+
+        with pyodbc.connect(self.connection_string_database_copy) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "{CALL update_exercise (?, ?, ?, ?, ?)}",
+                (int(session_id), int(exercise_id), int(set_number), weight, reps)
+            )
+            conn.commit()
+        return {"success": True}

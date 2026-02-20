@@ -736,6 +736,73 @@ def get_session_details():
         print(f"Error fetching session details: {e}")
         return jsonify({"error": str(e)}), 500
 
+@app.get("/api/viewer/sessions")
+def viewer_sessions():
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    try:
+        items = ds.viewer_list_sessions(int(user_id))
+        return jsonify({"items": items}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.get("/api/viewer/sessions/<int:session_id>")
+def viewer_session_detail(session_id):
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    try:
+        data = ds.viewer_get_session_full(int(user_id), int(session_id))
+        return jsonify({"session": data}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.put("/api/viewer/sessions/<int:session_id>")
+def viewer_update_session(session_id):
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json() or {}
+
+    try:
+        ds.viewer_update_session(
+            session_id=int(session_id),
+            date=data.get("date"),
+            start_time=data.get("start_time"),
+            end_time=data.get("end_time"),
+            location=data.get("location"),
+            notes=data.get("notes"),
+            visibility=data.get("visibility"),
+        )
+        return jsonify({"success": True}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.put("/api/viewer/exercise")
+def viewer_update_exercise():
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json() or {}
+
+    try:
+        ds.viewer_update_exercise(
+            session_id=data.get("session_id"),
+            exercise_id=data.get("exercise_id"),
+            set_number=data.get("set_number"),
+            weight=data.get("weight"),
+            reps=data.get("reps"),
+        )
+        return jsonify({"success": True}), 200
+    
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # ----------------------------------- Health ---------------------------------------------
 @app.get("/api/health")
 def health():
