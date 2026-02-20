@@ -9,17 +9,19 @@ from helpers_for_dataservice import now_iso, parse_iso_z, parse_date, epley_1rm,
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.dirname(_BASE_DIR)
 load_dotenv(os.path.join(_PROJECT_ROOT, ".env"), override=False)
-load_dotenv(os.path.join(_BASE_DIR, ".env"), override=False)
+#load_dotenv(os.path.join(_BASE_DIR, ".env"), override=False)
 
 server = os.getenv("DB_SERVER")
 database_master = 'master'
 database = os.getenv("DB_NAME")
-database_copy = os.getenv("DB_NAME_COPY", "RoseShreddednerdscopy")
+database_copy = os.getenv("DB_NAME", "RoseShreddednerdscopy")
 username = os.getenv("DB_USERNAME")
 password = os.getenv("DB_PASSWORD")
 driver = os.getenv("DB_DRIVER", "{ODBC Driver 18 for SQL Server}")
 encrypt = os.getenv("DB_ENCRYPT", "yes")
 trust_server_cert = os.getenv("DB_TRUST_SERVER_CERTIFICATE", "yes")
+
+print("Database being used is: ", database, database_copy, database_master)
 
 WEIGHT_EXERCISES = [
     # (Name, Category)
@@ -79,15 +81,15 @@ def _minutes_between(start_time, end_time):
 # The main class in this file which manages all the data for the application
 class DataService:
     def __init__(self):
-        self.server = os.getenv("DB_SERVER")
-        self.database_master = 'master'
-        self.database = os.getenv("DB_NAME")
-        self.database_copy = os.getenv("DB_NAME_COPY", "RoseShreddednerdscopy")
-        self.username = os.getenv("DB_USERNAME")
-        self.password = os.getenv("DB_PASSWORD")
-        self.driver = os.getenv("DB_DRIVER", "{ODBC Driver 18 for SQL Server}")
-        self.encrypt = os.getenv("DB_ENCRYPT", "yes")
-        self.trust_server_cert = os.getenv("DB_TRUST_SERVER_CERTIFICATE", "yes")
+        self.server = server
+        self.database_master = database_master
+        self.database = database
+        self.database_copy = database_copy
+        self.username = username
+        self.password = password
+        self.driver = driver
+        self.encrypt = encrypt
+        self.trust_server_cert = trust_server_cert
 
         self.connection_string_master = (
             f"DRIVER={self.driver};SERVER={self.server};DATABASE={self.database_master};"
@@ -104,6 +106,8 @@ class DataService:
             f"UID={self.username};PWD={self.password};Encrypt={self.encrypt};"
             f"TrustServerCertificate={self.trust_server_cert};"
         )
+
+        print("Database being used is: ", self.database, self.database_copy, self.database_master)
 
         self.user = None
 

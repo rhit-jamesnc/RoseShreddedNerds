@@ -25,7 +25,7 @@ DB_SERVER  = os.getenv("DB_SERVER")
 DB_USER    = os.getenv("DB_USERNAME")
 DB_PASS    = os.getenv("DB_PASSWORD")
 DB_DRIVER  = os.getenv("DB_DRIVER", "{ODBC Driver 17 for SQL Server}")
-TARGET_DB  = os.getenv("DB_NAME_COPY", "RoseDemo2")
+TARGET_DB  = os.getenv("DB_NAME", "RoseDemo2")
 
 def get_conn():
     cs = (
