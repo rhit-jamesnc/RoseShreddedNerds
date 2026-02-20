@@ -363,5 +363,5 @@ def create_and_setup_db():
     # seed_data(connection_string_database_copy)
     create_stored_procedures(connection_string_database_copy)
 
-create_and_setup_db()
+# create_and_setup_db()
 #destroy_db(connection_string_master)
