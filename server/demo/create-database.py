@@ -19,6 +19,9 @@ password = os.getenv("DB_PASSWORD")
 driver = os.getenv("DB_DRIVER", "{ODBC Driver 17 for SQL Server}")
 encrypt = os.getenv("DB_ENCRYPT", "yes")
 trust_server_certificate = os.getenv("DB_TRUST_SERVER_CERTIFICATE", "yes")
+print("SERVER:", server)
+print("DB:", database)
+print("USER:", username)
 
 connection_string_master = (
     f"DRIVER={driver};SERVER={server};DATABASE={database_master};"

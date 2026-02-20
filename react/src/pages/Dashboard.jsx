@@ -12,7 +12,7 @@ export default function Dashboard() {
   const [enrolledClasses, setEnrolledClasses] = useState([]);
   const [statusMsg, setStatusMsg] = useState({ type: "", text: "" });
   const [deletingId, setDeletingId] = useState(null);
-  const [totals, setTotals] = useState({ total_minutes: 0, total_sessions: 0 });
+  const [totals, setTotals] = useState({ total_minutes: 0, total_sessions: 0, weekly_sessions: 0 });
   const [editingId, setEditingId] = useState(null);
   const [editDate, setEditDate] = useState("");
   const [deletingSession, setDeletingSession] = useState({ classId: null, date: null });
@@ -87,7 +87,6 @@ export default function Dashboard() {
   const {
     //totalWorkouts,
     //lastWorkout,
-    weeklyMinutes,
     weeklyCount,
     weeklyDaysTrained,
   } = useMemo(() => {
@@ -403,7 +402,7 @@ export default function Dashboard() {
               <Card.Subtitle className="mb-2 text-muted small">Last 7 days</Card.Subtitle>
 
               <div className="display-6 fw-semibold mb-1">
-                {weeklyMinutes} <span className="fs-6">min</span>
+                {totals.weekly_sessions} <span className="fs-6">sessions</span>
               </div>
               <p className="small text-muted mb-2">
                 {weeklyCount === 0 ? "No sessions logged yet this week." : `Across ${weeklyCount} workout${

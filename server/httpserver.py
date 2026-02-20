@@ -87,6 +87,13 @@ def register():
     # If all of the fields aren't there then throw error message
     if not (first_name and last_name and username and password):
         return jsonify({"error": "Missing fields"}), 400
+    if len(password) > 20:
+        return jsonify({"error": "Password cannot be more than 20 characters"}), 400
+    if not username.isascii():
+        return jsonify({"error": "Username can only have ascii characters"}), 400
+    if not password.isascii():
+        return jsonify({"error": "Password can only have ascii characters"}), 400
+
     
     try:
         password_hash = generate_password_hash(password)
@@ -106,9 +113,9 @@ def register():
         return jsonify({"user": user}), 201
 
     except ValueError as e:
-        return jsonify({"error": str(e)}), 409
+        return jsonify({"error": "Invalid Values given"}), 409
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Username is not unique"}), 409
 
 @app.post("/api/auth/login")
 def login():

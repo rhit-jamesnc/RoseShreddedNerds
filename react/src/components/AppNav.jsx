@@ -43,12 +43,12 @@ export default function AppNav() {
                     {/* This is the left side of the Navbar which will contain the main links / most important tabs */}
                     <Nav className="me-auto">
                         <Nav.Link as={NavLink} to="/dashboard">Dashboard</Nav.Link>
-                        <Nav.Link as={NavLink} to="/classes">All Classes</Nav.Link>
+                        <Nav.Link as={NavLink} to="/classes">Classes</Nav.Link>
                         <Nav.Link as={NavLink} to="/leaderboards">Leaderboards</Nav.Link>
                         <Nav.Link as={NavLink} to="/personal-records">My PRs</Nav.Link>
                         <Nav.Link as={NavLink} to="/schedule">Schedule</Nav.Link>
                         <Nav.Link as={NavLink} to="/workouts">Log Workouts</Nav.Link>
-                        <Nav.Link as={NavLink} to="/workout-viewer">Workout Viewer</Nav.Link>
+                        <Nav.Link as={NavLink} to="/workout-viewer">History</Nav.Link>
                     </Nav>
 
                     {/* This side would contain additional pages/links and Auth pages*/}

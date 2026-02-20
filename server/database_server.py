@@ -15,7 +15,7 @@ print(pyodbc.drivers())
 server = os.getenv("DB_SERVER")
 database_master = 'master'
 database = os.getenv("DB_NAME")
-database_copy = os.getenv("DB_NAME_COPY", "RoseShreddednerdscopy")
+database_copy = os.getenv("DB_NAME_COPY", "RoseShreddednerdsCopy")
 username = os.getenv("DB_USERNAME")
 password = os.getenv("DB_PASSWORD")
 driver = '{ODBC Driver 17 for SQL Server}'
@@ -362,10 +362,10 @@ def create_stored_procedures(connection_string):
 
 
 def create_and_setup_db():
-    # create_db(connection_string_master)
-    # create_tables(connection_string_database_copy)
-    # seed_data(connection_string_database_copy)
+    create_db(connection_string_master)
+    create_tables(connection_string_database_copy)
+    seed_data(connection_string_database_copy)
     create_stored_procedures(connection_string_database_copy)
 
-# create_and_setup_db()
+#create_and_setup_db()
 #destroy_db(connection_string_master)

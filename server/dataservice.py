@@ -361,18 +361,31 @@ class DataService:
         with pyodbc.connect(self.connection_string_database_copy) as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT
-                    COUNT(*) AS total_sessions,
-                    SUM(DATEDIFF(MINUTE, StartTime, EndTime)) AS total_minutes
+                SELECT COUNT(*) AS [Total Sessions], SUM(DATEDIFF(MINUTE, StartTime, EndTime)) AS [Total Mins]
                 FROM [Session]
-                WHERE StudentID = ?;
+                WHERE StudentID = ?
+                GROUP BY StudentID;
             """, (int(student_id),))
 
             row = cursor.fetchone()
-            return {
+            response_object = {
                 "total_sessions": int(row[0] or 0),
                 "total_minutes": int(row[1] or 0),
             }
+            cursor.execute("""
+                            SELECT 
+                            COUNT(*) AS [Total Sessions],
+                            SUM(DATEDIFF(MINUTE, StartTime, EndTime)) AS [Total Mins]
+                            FROM [Session]
+                            WHERE StudentID = ?
+                            AND [Date] >= DATEADD(DAY, -6, CONVERT(date, GETDATE()))
+                            AND [Date] <  DATEADD(DAY,  1, CONVERT(date, GETDATE()));
+                           """, (int(student_id)))
+            row = cursor.fetchone()
+            print(row)
+            response_object["weekly_sessions"] = int(row[0] or 0)
+            print(response_object)
+            return response_object
     
     # Method to register an exercise name and category pair in the database
     def list_exercises_second(self):
