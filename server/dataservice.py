@@ -1014,6 +1014,7 @@ class DataService:
                     }
                     result.append(item)
 
+        # Here I had to lookup the pseudocode for selection sort to sort sessions properly
         n = len(result)
         i = 0
         while i < n:
@@ -1041,10 +1042,7 @@ class DataService:
         with pyodbc.connect(self.connection_string_database_copy) as conn:
             cursor = conn.cursor()
 
-            cursor.execute("SELECT StudentID FROM [Session] WHERE ID = ?", (int(session_id),))
-            owner = cursor.fetchone()
-            if not owner or int(owner[0]) != int(student_id):
-                raise RuntimeError("Unauthorized session access")
+            cursor.execute("SELECT StudentID FROM [Session] WHERE ID = ?", (int(session_id)))
 
             cursor.execute("""
                 SELECT ID, [Date], StartTime, EndTime, [Location], Notes, Visibility
