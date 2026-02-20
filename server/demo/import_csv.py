@@ -19,7 +19,7 @@ def read_csv(filename):
         return list(csv.DictReader(f))
 
 # ── connection ────────────────────────────────────────────────────────────────
-load_dotenv(os.path.join(_SERVER_DIR, ".env"), override=True)
+load_dotenv(os.path.join(_SERVER_DIR, ".env"), override=False)
 
 DB_SERVER  = os.getenv("DB_SERVER")
 DB_USER    = os.getenv("DB_USERNAME")

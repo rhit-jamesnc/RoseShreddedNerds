@@ -9,17 +9,27 @@ import import_csv
 
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _SERVER_DIR = os.path.dirname(os.path.dirname(_BASE_DIR)) 
-load_dotenv(os.path.join(_SERVER_DIR, ".env"), override=True)
+load_dotenv(os.path.join(_SERVER_DIR, ".env"), override=False)
 
 server = os.getenv("DB_SERVER")
 database_master = 'master'
 database = os.getenv("DB_NAME")
 username = os.getenv("DB_USERNAME")
 password = os.getenv("DB_PASSWORD")
-driver = '{ODBC Driver 17 for SQL Server}'
+driver = os.getenv("DB_DRIVER", "{ODBC Driver 17 for SQL Server}")
+encrypt = os.getenv("DB_ENCRYPT", "yes")
+trust_server_certificate = os.getenv("DB_TRUST_SERVER_CERTIFICATE", "yes")
 
-connection_string_master = f'DRIVER={driver};SERVER={server};DATABASE={database_master};UID={username};PWD={password};'
-connection_string_database = f'DRIVER={driver};SERVER={server};DATABASE={database};UID={username};PWD={password};'
+connection_string_master = (
+    f"DRIVER={driver};SERVER={server};DATABASE={database_master};"
+    f"UID={username};PWD={password};Encrypt={encrypt};"
+    f"TrustServerCertificate={trust_server_certificate};"
+)
+connection_string_database = (
+    f"DRIVER={driver};SERVER={server};DATABASE={database};"
+    f"UID={username};PWD={password};Encrypt={encrypt};"
+    f"TrustServerCertificate={trust_server_certificate};"
+)
 
 def create_db(connection_string):
 
