@@ -14,32 +14,30 @@ load_dotenv(os.path.join(_SERVER_DIR, ".env"), override=True)
 server = os.getenv("DB_SERVER")
 database_master = 'master'
 database = os.getenv("DB_NAME")
-database_copy = os.getenv("DB_NAME_COPY", "RoseShreddednerdscopy")
 username = os.getenv("DB_USERNAME")
 password = os.getenv("DB_PASSWORD")
 driver = '{ODBC Driver 17 for SQL Server}'
 
 connection_string_master = f'DRIVER={driver};SERVER={server};DATABASE={database_master};UID={username};PWD={password};'
 connection_string_database = f'DRIVER={driver};SERVER={server};DATABASE={database};UID={username};PWD={password};'
-connection_string_database_copy = f'DRIVER={driver};SERVER={server};DATABASE={database_copy};UID={username};PWD={password};'
 
 def create_db(connection_string):
 
-    print(f"\nCreating [{database_copy}] on {server} …")
+    print(f"\nCreating [{database}] on {server} …")
 
     with pyodbc.connect(connection_string, autocommit=True) as conn:
         cursor = conn.cursor()
         sql_command = f"""
-                            CREATE DATABASE [{database_copy}]
+                            CREATE DATABASE [{database}]
                             ON
                                     PRIMARY ( NAME=Data,
-                                    FILENAME='/var/opt/mssql/data/{database_copy}.mdf',
+                                    FILENAME='/var/opt/mssql/data/{database}.mdf',
                                     SIZE=20MB,
                                     MAXSIZE=90MB,
                                     FILEGROWTH=12%)
                             LOG ON
                                     ( NAME=Log,
-                                    FILENAME='/var/opt/mssql/data/{database_copy}.ldf',
+                                    FILENAME='/var/opt/mssql/data/{database}.ldf',
                                     SIZE=10MB,
                                     MAXSIZE=30MB,
                                     FILEGROWTH=17%)
@@ -50,21 +48,21 @@ def create_db(connection_string):
 
 def destroy_db(connection_string):
 
-    print(f"\nDeleting [{database_copy}] on {server} …")
+    print(f"\nDeleting [{database}] on {server} …")
 
     with pyodbc.connect(connection_string, autocommit=True) as conn:
         cursor = conn.cursor()
         sql_command = f"""
-                          ALTER DATABASE [{database_copy}]
+                          ALTER DATABASE [{database}]
                           SET SINGLE_USER WITH ROLLBACK IMMEDIATE
-                          DROP DATABASE [{database_copy}]
+                          DROP DATABASE [{database}]
                         """
         cursor.execute(sql_command)
         conn.commit()
 
 def create_tables(connection_string):
 
-    print(f"\nCreating tables for [{database_copy}] on {server} …")
+    print(f"\nCreating tables for [{database}] on {server} …")
 
     with pyodbc.connect(connection_string) as conn:
         cursor = conn.cursor()
@@ -166,7 +164,7 @@ def create_tables(connection_string):
 
 def create_stored_procedures(connection_string):
     
-    print(f"\nCreating stored procedures for [{database_copy}] on {server} …")
+    print(f"\nCreating stored procedures for [{database}] on {server} …")
     
     stored_procedures.add_person(connection_string)
     stored_procedures.get_person_by_username(connection_string)
@@ -204,8 +202,8 @@ def create_stored_procedures(connection_string):
 
 def create_and_setup_db():
     create_db(connection_string_master)
-    create_tables(connection_string_database_copy)
-    create_stored_procedures(connection_string_database_copy)
+    create_tables(connection_string_database)
+    create_stored_procedures(connection_string_database)
     import_csv.run()
 
 create_and_setup_db()
