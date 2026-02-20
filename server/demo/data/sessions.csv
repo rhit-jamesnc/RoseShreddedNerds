@@ -1,0 +1,19 @@
+session_code,date,start_time,end_time,location,notes,visibility,student_username,class_name
+S1,2026-02-11,16:00:00,17:00:00,SRC,Workout session,1,krassmann1o,
+S2,2026-02-12,16:00:00,17:00:00,SRC,Workout session,1,cstopforth1a,
+S3,2026-02-13,16:00:00,17:00:00,SRC,Workout session,1,mclilverd1l,
+S4,2026-02-14,16:00:00,17:00:00,SRC,Workout session,1,bbattelle8,
+S5,2026-02-15,16:00:00,17:00:00,SRC,Workout session,1,henderle1c,
+S6,2026-02-16,16:00:00,17:00:00,SRC,Workout session,1,dkeme1b,
+S7,2026-02-17,16:00:00,17:00:00,SRC,Workout session,1,kshevelin12,
+S8,2026-02-18,16:00:00,17:00:00,SRC,Workout session,1,bbattelle8,
+S9,2026-02-19,16:00:00,17:00:00,SRC,Workout session,1,mmcgralek,
+S10,2026-02-20,16:00:00,17:00:00,SRC,Workout session,1,wblomefield5,
+S11,2026-02-21,16:00:00,17:00:00,SRC,Workout session,1,klinge0,
+S12,2026-02-22,16:00:00,17:00:00,SRC,Workout session,1,kjohnj,
+S13,2026-02-23,18:00:00,19:00:00,SRC,Class session,1,,HIIT Basics
+S14,2026-02-24,18:00:00,19:00:00,SRC,Class session,1,,HIIT Basics
+S15,2026-02-25,18:00:00,19:00:00,SRC,Class session,1,,Core Stability
+S16,2026-02-26,18:00:00,19:00:00,SRC,Class session,1,,Olympic Lifts
+S17,2026-02-27,18:00:00,19:00:00,SRC,Class session,1,,Powerlifting 101
+S18,2026-02-28,18:00:00,19:00:00,SRC,Class session,1,,Strength Foundations

@@ -53,7 +53,7 @@ export default function Dashboard() {
       if (resp?.totals) setTotals(resp.totals);
     }).catch(() => {});
 
-    api('/exercises').then(data => setAvailableExercises(data || [])).catch(() => {});
+    api('/exercises').then(data => setAvailableExercises(data?.items || data || [])).catch(() => {});
     api('/sessions').then(data => { if (data?.length > 0) setCurrentSessionId(data[0].id); });
   }, []);
 
@@ -181,7 +181,7 @@ export default function Dashboard() {
 
   const handleSaveSession = async (classId) => {
     try {
-      const exercisesToSave = selectedExercises.filter(
+      const exercisesToSave = (selectedExercises || []).filter(
         ex => !removedExerciseIds.includes(ex.id)
       );
 
@@ -200,7 +200,7 @@ export default function Dashboard() {
         const realExerciseId = exerciseIdMap[ex.name.trim().toLowerCase()] || ex.id;
         console.log(`Exercise: ${ex.name}, realExerciseId: ${realExerciseId}, sessionId: ${realSessionId}`);
 
-        return ex.sets.map((set, index) => {
+        return (Array.isArray(ex.sets) ? ex.sets : []).map((set, index) => {
           return api('/sets', {
             method: 'POST',
             body: {
@@ -699,7 +699,7 @@ export default function Dashboard() {
                                       </div>
                                     </div>
                                     
-                                    {ex.sets.map((set, setIdx) => (
+                                    {(Array.isArray(ex.sets) ? ex.sets : []).map((set, setIdx) => (
                                       <Row key={setIdx} className="mb-3 align-items-end g-2">
                                         <Col xs={2}>
                                           <label className="small text-muted d-block mb-1">Set</label>
