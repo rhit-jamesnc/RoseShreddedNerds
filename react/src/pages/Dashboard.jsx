@@ -59,13 +59,26 @@ export default function Dashboard() {
 
 
   // These are helper functions that I created for calculating dashboard based statistics
-  function parseDate(d) {
-    if (!d) return null;
+  function parseDate(rawDate) {
+    if (!rawDate) return null;
+    if (rawDate instanceof Date && !Number.isNaN(rawDate.getTime())) return rawDate;
 
-    const [y, m, day] = d.split("-").map(Number);
-    if (!y || !m || !day) return null;
+    const str = String(rawDate).trim();
+    if (!str) return null;
 
-    return new Date(y, m - 1, day);
+    //prefer YYYY-MM-DD and also handle datetime strings like YYYY-MM-DDTHH:mm:ss
+    const dateOnly = str.includes("T") ? str.slice(0, 10) : str;
+    const isoMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateOnly);
+    if (isoMatch) {
+      const y = Number(isoMatch[1]);
+      const m = Number(isoMatch[2]);
+      const d = Number(isoMatch[3]);
+      const parsed = new Date(y, m - 1, d);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    const fallback = new Date(str);
+    return Number.isNaN(fallback.getTime()) ? null : fallback;
   }
 
   // This is a very compact and clean way of defining multiple variables and assigning them value simultaneous via a return/callback
@@ -89,11 +102,10 @@ export default function Dashboard() {
     }
 
     const today = new Date();
-    const sevenDaysAgo = new Date(
-      today.getFullYear(),
-      today.getMonth(),
-      today.getDate() - 6
-    );
+    today.setHours(23, 59, 59, 999);
+    const sevenDaysAgo = new Date(today);
+    sevenDaysAgo.setDate(today.getDate() - 6);
+    sevenDaysAgo.setHours(0, 0, 0, 0);
 
     // This is the main part where I am actually making most of my calculations and computations for the Dashboard
     let weeklyMinutes = 0;
@@ -102,12 +114,12 @@ export default function Dashboard() {
 
     // GOing over all the workouts to make the weekly minutes calculation
     for (const w of workouts) {
-      const dateStr = w.date || w.day;
+      const dateStr = w.date || w.day || w.Date;
       const d = parseDate(dateStr);
       if (!d) continue;
 
       if (d >= sevenDaysAgo && d <= today) {
-        weeklyMinutes += Number(w.duration_minutes || 0);
+        weeklyMinutes += Number(w.duration_minutes ?? w.duration ?? 0);
         weeklyCount += 1;
         weeklyDates.add(dateStr);
       }

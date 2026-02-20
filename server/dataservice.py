@@ -7,7 +7,9 @@ from datetime import datetime, timedelta, timezone, date
 from helpers_for_dataservice import now_iso, parse_iso_z, parse_date, epley_1rm, iso_week_of, iso_week_boundary
 
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-load_dotenv(os.path.join(_BASE_DIR, ".env"))
+_PROJECT_ROOT = os.path.dirname(_BASE_DIR)
+load_dotenv(os.path.join(_PROJECT_ROOT, ".env"), override=False)
+load_dotenv(os.path.join(_BASE_DIR, ".env"), override=False)
 
 server = os.getenv("DB_SERVER")
 database_master = 'master'
@@ -83,11 +85,25 @@ class DataService:
         self.database_copy = os.getenv("DB_NAME_COPY", "RoseShreddednerdscopy")
         self.username = os.getenv("DB_USERNAME")
         self.password = os.getenv("DB_PASSWORD")
-        self.driver = '{ODBC Driver 17 for SQL Server}'
+        self.driver = os.getenv("DB_DRIVER", "{ODBC Driver 18 for SQL Server}")
+        self.encrypt = os.getenv("DB_ENCRYPT", "yes")
+        self.trust_server_cert = os.getenv("DB_TRUST_SERVER_CERTIFICATE", "yes")
 
-        self.connection_string_master = f'DRIVER={self.driver};SERVER={self.server};DATABASE={self.database_master};UID={self.username};PWD={self.password};'
-        self.connection_string_database = f'DRIVER={self.driver};SERVER={self.server};DATABASE={self.database};UID={self.username};PWD={self.password};'
-        self.connection_string_database_copy = f'DRIVER={self.driver};SERVER={self.server};DATABASE={self.database_copy};UID={self.username};PWD={self.password};'
+        self.connection_string_master = (
+            f"DRIVER={self.driver};SERVER={self.server};DATABASE={self.database_master};"
+            f"UID={self.username};PWD={self.password};Encrypt={self.encrypt};"
+            f"TrustServerCertificate={self.trust_server_cert};"
+        )
+        self.connection_string_database = (
+            f"DRIVER={self.driver};SERVER={self.server};DATABASE={self.database};"
+            f"UID={self.username};PWD={self.password};Encrypt={self.encrypt};"
+            f"TrustServerCertificate={self.trust_server_cert};"
+        )
+        self.connection_string_database_copy = (
+            f"DRIVER={self.driver};SERVER={self.server};DATABASE={self.database_copy};"
+            f"UID={self.username};PWD={self.password};Encrypt={self.encrypt};"
+            f"TrustServerCertificate={self.trust_server_cert};"
+        )
 
         self.user = None
 
@@ -184,7 +200,9 @@ class DataService:
                 if not row:
                     return None
 
-                return self._decorate_user(row)
+                #stored procedure column ordering can differ; re-read by ID
+                #suing the ID-based proc so field mapping stays consistent.
+                return self.get_user_by_id(int(row[0]))
         except Exception as e:
             print(f"SQL Error in get_user_by_username: {e}")
             return None
