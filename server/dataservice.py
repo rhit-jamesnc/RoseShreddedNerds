@@ -1044,11 +1044,7 @@ class DataService:
 
             cursor.execute("SELECT StudentID FROM [Session] WHERE ID = ?", (int(session_id)))
 
-            cursor.execute("""
-                SELECT ID, [Date], StartTime, EndTime, [Location], Notes, Visibility
-                FROM [Session]
-                WHERE ID = ?
-            """, (int(session_id),))
+            cursor.execute("EXEC get_session_by_id @SessionID = ?", int(session_id))
             srow = cursor.fetchone()
             if not srow:
                 raise RuntimeError("Session not found")
@@ -1064,14 +1060,7 @@ class DataService:
                 "items": []
             }
 
-            cursor.execute("""
-                SELECT e.ID AS ExerciseID, e.[Name], e.Category, l.IsPr, s.SetNumber, s.[Weight], s.Reps
-                FROM Logs l
-                JOIN Exercise e ON e.ID = l.ExerciseID
-                JOIN [Set] s ON s.ExerciseID = e.ID
-                WHERE l.SessionID = ?
-                ORDER BY e.[Name], s.SetNumber
-            """, (int(session_id),))
+            cursor.execute("{CALL dbo.GetSessionExerciseSets (?)}", int(session_id))
 
             rows = cursor.fetchall()
             for row in rows:
@@ -1109,6 +1098,7 @@ class DataService:
             conn.commit()
         return {"success": True}
     
+    # This particular function is used to populate the exercise dropdown I have for log a workout page
     def list_exercises_for_dropdown(self):
         items = []
         i = 1

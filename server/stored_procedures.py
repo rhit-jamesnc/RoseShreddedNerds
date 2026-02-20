@@ -1004,6 +1004,48 @@ def get_person_id_by_username(connection_string):
         cursor.execute(sql_script)
         conn.commit()
 
+def get_session_exercise_sets(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+            CREATE OR ALTER PROCEDURE get_session_exercise_sets
+                @SessionID INT
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+
+                SELECT
+                    e.ID AS ExerciseID, e.[Name], e.Category, l.IsPr, s.SetNumber, s.[Weight], s.Reps
+                FROM dbo.Logs AS l
+                JOIN dbo.Exercise AS e
+                    ON e.ID = l.ExerciseID
+                JOIN dbo.[Set] AS s
+                    ON s.ExerciseID = e.ID
+                WHERE l.SessionID = @SessionID
+                ORDER BY e.[Name], s.SetNumber;
+            END;
+        """
+        cursor.execute(sql_script)
+        conn.commit()
+
+def get_session_by_id(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+        CREATE OR ALTER PROCEDURE get_session_by_id
+            @SessionID INT
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+
+            SELECT 
+                ID,[Date], StartTime, EndTime, [Location], Notes, Visibility
+            FROM dbo.[Session]
+            WHERE ID = @SessionID;
+        END;
+            """
+        cursor.execute(sql_script)
+        conn.commit()
 def sp_CreateClass(connection_string):
     with pyodbc.connect(connection_string) as conn:
         cursor = conn.cursor()
