@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { Analytics } from "@vercel/analytics/react";
 import Layout from "./components/Layout";
 
 // Importing all pages directly from the src/pages folder
@@ -28,6 +29,7 @@ function NotFound() {
 export default function App() {
   return (
     <BrowserRouter>
+      <Analytics />
       <Routes>
 
         {/* One thing to note here is that all pages inside Layout will automatically get Navbar and Footer */}
