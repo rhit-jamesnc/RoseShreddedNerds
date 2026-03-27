@@ -6,7 +6,7 @@ from werkzeug.security import generate_password_hash
 
 # ── paths ────────────────────────────────────────────────────────────────────
 _BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
-_SERVER_DIR = os.path.dirname(os.path.dirname(_BASE_DIR))
+_ENV_PATH   = os.path.join(_BASE_DIR, "..", ".env")
 DATA_DIR    = os.path.join(_BASE_DIR, "data")
 
 
@@ -19,18 +19,16 @@ def read_csv(filename):
         return list(csv.DictReader(f))
 
 # ── connection ────────────────────────────────────────────────────────────────
-load_dotenv(os.path.join(_SERVER_DIR, ".env"), override=False)
+load_dotenv(_ENV_PATH, override=True)
 
 DB_SERVER  = os.getenv("DB_SERVER")
-DB_USER    = os.getenv("DB_USERNAME")
-DB_PASS    = os.getenv("DB_PASSWORD")
 DB_DRIVER  = os.getenv("DB_DRIVER", "{ODBC Driver 17 for SQL Server}")
-TARGET_DB  = os.getenv("DB_NAME", "RoseDemo2")
+TARGET_DB  = os.getenv("DB_NAME")
 
 def get_conn():
     cs = (
         f"DRIVER={DB_DRIVER};SERVER={DB_SERVER};DATABASE={TARGET_DB};"
-        f"UID={DB_USER};PWD={DB_PASS};TrustServerCertificate=yes;"
+        f"Trusted_Connection=yes;TrustServerCertificate=yes;"
     )
     return pyodbc.connect(cs)
 

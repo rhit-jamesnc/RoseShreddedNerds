@@ -107,8 +107,6 @@ class DataService:
             f"TrustServerCertificate={self.trust_server_cert};"
         )
 
-        print("Database being used is: ", self.database, self.database_copy, self.database_master)
-
         self.user = None
 
     def _role_for_person_id(self, person_id):

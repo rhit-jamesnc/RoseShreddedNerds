@@ -8,8 +8,8 @@ import import_csv
 
 
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-_SERVER_DIR = os.path.dirname(os.path.dirname(_BASE_DIR)) 
-load_dotenv(os.path.join(_SERVER_DIR, ".env"), override=False)
+_ENV_PATH = os.path.join(_BASE_DIR, "..", ".env") 
+load_dotenv(_ENV_PATH, override=True)
 
 server = os.getenv("DB_SERVER")
 database_master = 'master'
@@ -24,13 +24,14 @@ print("DB:", database)
 print("USER:", username)
 
 connection_string_master = (
-    f"DRIVER={driver};SERVER={server};DATABASE={database_master};"
-    f"UID={username};PWD={password};Encrypt={encrypt};"
+    f"DRIVER={driver};SERVER={server};DATABASE=master;"
+    f"Trusted_Connection=yes;Encrypt={encrypt};"
     f"TrustServerCertificate={trust_server_certificate};"
 )
+
 connection_string_database = (
     f"DRIVER={driver};SERVER={server};DATABASE={database};"
-    f"UID={username};PWD={password};Encrypt={encrypt};"
+    f"Trusted_Connection=yes;Encrypt={encrypt};"
     f"TrustServerCertificate={trust_server_certificate};"
 )
 
@@ -40,22 +41,7 @@ def create_db(connection_string):
 
     with pyodbc.connect(connection_string, autocommit=True) as conn:
         cursor = conn.cursor()
-        sql_command = f"""
-                            CREATE DATABASE [{database}]
-                            ON
-                                    PRIMARY ( NAME=Data,
-                                    FILENAME='/var/opt/mssql/data/{database}.mdf',
-                                    SIZE=20MB,
-                                    MAXSIZE=90MB,
-                                    FILEGROWTH=12%)
-                            LOG ON
-                                    ( NAME=Log,
-                                    FILENAME='/var/opt/mssql/data/{database}.ldf',
-                                    SIZE=10MB,
-                                    MAXSIZE=30MB,
-                                    FILEGROWTH=17%)
-                            COLLATE SQL_Latin1_General_Cp1_CI_AS
-                        """
+        sql_command = f"CREATE DATABASE [{database}]"
         cursor.execute(sql_command)
         conn.commit()
 
@@ -153,7 +139,6 @@ def create_tables(connection_string):
                                 PRIMARY KEY (StudentID, ClassID)
                             )
 
-                            -- used geeksforgeeks.org for the default date value syntax
                             CREATE TABLE [PersonalRecord] (
                                 ID int IDENTITY (1, 1) PRIMARY KEY NOT NULL,
                                 Weight decimal(7, 2) NOT NULL,
@@ -226,4 +211,4 @@ def create_and_setup_db():
     import_csv.run()
 
 create_and_setup_db()
-# destroy_db(connection_string_master)
+#destroy_db(connection_string_master)
