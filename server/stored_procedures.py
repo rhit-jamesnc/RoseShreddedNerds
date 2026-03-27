@@ -53,7 +53,7 @@ def get_person_by_username(connection_string):
     with pyodbc.connect(connection_string) as conn:
         cursor = conn.cursor()
         sql_script = """
-                        CREATE PROCEDURE get_Person_by_Username
+                        CREATE OR ALTER PROCEDURE get_Person_by_Username
                             (
                                 @Username varchar(50)
                             )
@@ -63,7 +63,9 @@ def get_person_by_username(connection_string):
                             BEGIN;
                                 THROW 51000, 'Error: No user with the given username exists in the database', 1
                             END
-                            SELECT * FROM Person WHERE Username = @Username
+                            SELECT ID, FName, LName, Username, PasswordHash, DOB, [Weight]
+                            FROM Person
+                            WHERE Username = @Username
                         END
                      """
         cursor.execute(sql_script)
@@ -74,7 +76,7 @@ def get_person_by_id(connection_string):
     with pyodbc.connect(connection_string) as conn:
         cursor = conn.cursor()
         sql_script = """
-                        CREATE PROCEDURE get_Person_by_ID
+                        CREATE OR ALTER PROCEDURE get_Person_by_ID
                             (
                                 @ID int
                             )
@@ -84,7 +86,9 @@ def get_person_by_id(connection_string):
                             BEGIN;
                                 THROW 51000, 'Error: No user with the user id exists in the database', 1
                             END
-                            SELECT * FROM Person WHERE ID = @ID
+                            SELECT ID, FName, LName, Username, PasswordHash, DOB, [Weight]
+                            FROM Person
+                            WHERE ID = @ID
                         END
                      """
         cursor.execute(sql_script)
@@ -133,6 +137,28 @@ def update_person(connection_string):
         cursor.execute(sql_script)
         conn.commit()
 
+#Stored procedure to get all existing (non deleted) classes
+def get_AllClasses(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+                        CREATE OR ALTER PROCEDURE get_AllClasses
+                        AS
+                        BEGIN
+                            SET NOCOUNT ON;
+                            SELECT 
+                                c.ID, 
+                                c.Name, 
+                                p.FName, 
+                                p.LName 
+                            FROM [Class] c
+                            JOIN [Teaches] t ON c.ID = t.ClassID
+                            JOIN [Person] p ON t.TrainerID = p.ID;
+                        END
+                     """
+        cursor.execute(sql_script)
+        conn.commit()
+
 # Stored procedure to add a workout or class session
 def add_session(connection_string):
     with pyodbc.connect(connection_string) as conn:
@@ -147,18 +173,24 @@ def add_session(connection_string):
                                     @Notes varchar(500),
                                     @Visibility bit = 0,
                                     @StudentID int,
+                                    @ClassID int,
                                     @GeneratedID int OUTPUT
                                 )
                             AS
                             BEGIN
                                 IF @StudentID IS NULL OR (SELECT COUNT(*) FROM STUDENT WHERE ID = @StudentID) = 0
                                 BEGIN;
-                                    THROW 51002, 'Error: Student not found.', 1
+                                    THROW 51001, 'Error: Student not found.', 1
+                                END
+
+                                IF @ClassID IS NOT NULL AND (SELECT COUNT(*) FROM Class WHERE ID = @ClassID) = 0
+                                BEGIN;
+                                    THROW 51002, 'Error: Class not found.', 1
                                 END
                                 IF @Date IS NULL SET @Date = CAST(GETDATE() AS DATE)
 
-                                INSERT INTO [Session] (Date, StartTime, EndTime, Location, Notes, Visibility, StudentID) 
-                                VALUES (@Date, @StartTime, @EndTime, @Location, @Notes, @Visibility, @StudentID)
+                                INSERT INTO [Session] (Date, StartTime, EndTime, Location, Notes, Visibility, StudentID, ClassID) 
+                                VALUES (@Date, @StartTime, @EndTime, @Location, @Notes, @Visibility, @StudentID, @ClassID)
 
                                 SET @GeneratedID = SCOPE_IDENTITY()
                             END
@@ -166,6 +198,133 @@ def add_session(connection_string):
         cursor.execute(sql_script)
         conn.commit()
 
+def get_sessions_in_past(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+                        CREATE OR ALTER PROCEDURE get_sessions_in_past
+                            (
+                                @ID int
+                            )
+                        AS
+                        BEGIN
+                            IF @ID IS NULL OR NOT EXISTS (SELECT 1 FROM Person WHERE ID = @ID)
+                                THROW 51000, 'User not found', 1;
+
+                            SELECT ID, [Date], StartTime, EndTime, [Location], Notes, Visibility
+                            FROM [Session]
+                            WHERE StudentID = @ID
+                                AND [Date] <= CAST(GETDATE() AS DATE)
+                            ORDER BY [Date] DESC, StartTime DESC;
+                        END
+                     """
+        cursor.execute(sql_script)
+        conn.commit()
+
+def get_sessions_in_future(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+                        CREATE OR ALTER PROCEDURE get_sessions_in_future
+                            (
+                                @ID int
+                            )
+                        AS
+                        BEGIN
+                            IF @ID IS NULL OR NOT EXISTS (SELECT 1 FROM Person WHERE ID = @ID)
+                                THROW 51000, 'User not found', 1;
+
+                            SELECT ID, [Date], StartTime, EndTime, [Location], Notes, Visibility
+                            FROM [Session]
+                            WHERE StudentID = @ID
+                                AND [Date] > CAST(GETDATE() AS DATE)
+                            ORDER BY [Date] ASC, StartTime ASC;
+                        END
+                     """
+        cursor.execute(sql_script)
+        conn.commit()
+
+def update_session(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+                        CREATE OR ALTER PROCEDURE update_session
+                            (
+                                @ID int,
+                                @Date Date = NULL,
+                                @StartTime time(0) = NULL,
+                                @EndTime time(0) = NULL,
+                                @Location varchar(50) = NULL,
+                                @Notes varchar(50) = NULL,
+                                @Visibility bit = NULL
+                            )
+                        AS
+                        BEGIN
+                            IF @ID IS NULL OR (SELECT 1 FROM Session WHERE ID = @ID) = 0
+                            BEGIN;
+                                THROW 51000, 'Session not found', 1
+                            END
+
+                            IF @Date IS NULL SET @Date = (SELECT Session.Date FROM Session WHERE ID = @ID)
+                            IF @StartTime IS NULL SET @StartTime = (SELECT Session.StartTime FROM Session WHERE ID = @ID)
+                            IF @EndTime IS NULL SET @EndTime = (SELECT Session.EndTime FROM Session WHERE ID = @ID)
+                            IF @Location IS NULL SET @Location = (SELECT Session.Location FROM Session WHERE ID = @ID)
+                            IF @Notes IS NULL SET @Notes = (SELECT Session.Notes FROM Session WHERE ID = @ID)
+                            IF @Visibility IS NULL SET @Visibility = (SELECT Session.Visibility FROM Session WHERE ID = @ID)
+
+                            UPDATE Session
+                            SET [Date] = @Date,
+                                [StartTime] = @StartTime,
+                                [EndTime] = @EndTime,
+                                [Location] = @Location,
+                                [Notes] = @Notes,
+                                [Visibility] = @Visibility
+                            WHERE ID = @ID
+
+                        END
+                     """
+        cursor.execute(sql_script)
+        conn.commit()
+def update_exercise(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+                        CREATE OR ALTER PROCEDURE update_exercise
+                            (
+                                @SessionID int,
+                                @ExerciseID int,
+                                @SetNumber int,
+                                @Weight decimal(5,2) NULL,
+                                @Reps int NULL
+                            )
+                        AS
+                        BEGIN
+
+                                IF @SessionID IS NULL OR (SELECT 1 FROM Session WHERE ID = @SessionID) < 1
+                                BEGIN;
+                                    THROW 51000, 'Session not found', 1
+                                END
+                                IF @ExerciseID IS NULL OR (SELECT 1 FROM Exercise WHERE ID = @ExerciseID) < 1
+                                BEGIN;
+                                    THROW 51001, 'Exercise not found', 1
+                                END
+                                IF @SetNumber IS NULL OR (SELECT 1 FROM [Set] WHERE SetNumber = @SetNumber) < 1
+                                BEGIN;
+                                    THROW 51002, 'Exercise Set not found', 1
+                                END
+
+                                IF @Weight IS NULL SET @Weight = (SELECT [Set].Weight FROM [Set] WHERE ExerciseID = @ExerciseID AND SetNumber = @SetNumber AND SessionID = @SessionID)
+                                IF @Reps IS NULL SET @Reps = (SELECT [Set].Reps FROM [Set] WHERE ExerciseID = @ExerciseID AND SetNumber = @SetNumber AND SessionID = @SessionID)
+
+                                UPDATE [Set]
+                                SET [Weight] = @Weight,
+                                    Reps = @Reps
+                                WHERE ExerciseID = @ExerciseID AND SetNumber = @SetNumber AND SessionID = @SessionID
+
+                        END
+                     """
+        cursor.execute(sql_script)
+        conn.commit
 # Stored procedure to add an exercise and log it for the session with information related to the exercise
 def add_exercise_info(connection_string):
     with pyodbc.connect(connection_string) as conn:
@@ -198,8 +357,8 @@ def add_exercise_info(connection_string):
                                                 INSERT INTO [Logs] (ExerciseID, SessionID, IsPr)
                                                 VALUES (@GeneratedID, @SessionID, @IsPr)
 
-                                                INSERT INTO [Set] (ExerciseID, SetNumber, Weight, Reps)
-                                                VALUES (@GeneratedID, @SetNumber, @Weight, @Reps)
+                                                INSERT INTO [Set] (ExerciseID, SessionID, SetNumber, Weight, Reps)
+                                                VALUES (@GeneratedID, @SessionID, @SetNumber, @Weight, @Reps)
 
                                             END
                                         """
@@ -266,7 +425,7 @@ def get_session_info(connection_string):
                             FROM Logs
                             JOIN Exercise e ON Logs.ExerciseID = e.ID
                             JOIN [Set] s ON e.ID = s.ExerciseID
-                            WHERE SessionID = @SessionID
+                            WHERE Logs.SessionID = @SessionID
 
                             SET @Date = (SELECT [Date] FROM Session WHERE ID = @SessionID)
 
@@ -274,6 +433,7 @@ def get_session_info(connection_string):
                      """
         cursor.execute(sql_script)
         conn.commit()
+
 def get_schedule_info(connection_string):
     with pyodbc.connect(connection_string) as conn:
         cursor = conn.cursor()
@@ -285,7 +445,19 @@ def get_schedule_info(connection_string):
                             )
                         AS
                         BEGIN
-                            SELECT TOP(@NumRows) * FROM Session WHERE StudentID = @ID
+                            SELECT TOP(@NumRows)
+                                ID,
+                                [Date],
+                                StartTime,
+                                EndTime,
+                                Location,
+                                Notes,
+                                Visibility,
+                                StudentID,
+                                ClassID
+                            FROM [Session]
+                            WHERE StudentID = @ID
+                            ORDER BY [Date] DESC, ID DESC
                         END
                      """
         cursor.execute(sql_script)
@@ -296,17 +468,170 @@ def get_student_enrollments(connection_string):
     with pyodbc.connect(connection_string) as conn:
         cursor = conn.cursor()
         sql_script = """
-            CREATE PROCEDURE get_StudentEnrollments
+            CREATE OR ALTER PROCEDURE get_StudentEnrollments
                 @StudentID INT
             AS
             BEGIN
                 SET NOCOUNT ON;
-                SELECT c.ID, c.Name, p.FName, p.LName
+                SELECT c.ID, c.Name, p.FName, p.LName,
+                    (
+                        SELECT STRING_AGG(CAST(s.Date AS VARCHAR), ', ') 
+                        FROM [Session] s 
+                        WHERE s.ClassID = c.ID
+                    ) AS session_dates
                 FROM [HasA] h
                 JOIN [Class] c ON h.ClassID = c.ID
-                JOIN [Teaches] t ON c.ID = t.SessionID
+                JOIN [Teaches] t ON c.ID = t.ClassID
                 JOIN [Person] p ON t.TrainerID = p.ID
                 WHERE h.StudentID = @StudentID;
+            END
+        """
+        cursor.execute(sql_script)
+        conn.commit()
+
+def unenroll_student(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+            CREATE OR ALTER PROCEDURE UnenrollStudent
+                @StudentID INT, 
+                @ClassID INT
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+
+                DELETE FROM [HasA] 
+                WHERE StudentID = @StudentID AND ClassID = @ClassID;
+            END
+        """
+        cursor.execute(sql_script)
+        conn.commit()
+
+def enroll_student(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+            CREATE OR ALTER PROCEDURE EnrollStudent
+                @StudentID INT,
+                @ClassID INT
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+
+                IF @StudentID IS NULL OR @ClassID IS NULL
+                BEGIN
+                    SELECT 0 AS Success, 'Missing StudentID or ClassID' AS Message;
+                    RETURN;
+                END
+
+                IF NOT EXISTS (SELECT 1 FROM [Student] WHERE ID = @StudentID)
+                BEGIN
+                    SELECT 0 AS Success, 'Student not found' AS Message;
+                    RETURN;
+                END
+
+                IF NOT EXISTS (SELECT 1 FROM [Class] WHERE ID = @ClassID)
+                BEGIN
+                    SELECT 0 AS Success, 'Class not found' AS Message;
+                    RETURN;
+                END
+
+                IF EXISTS (SELECT 1 FROM [HasA] WHERE StudentID = @StudentID AND ClassID = @ClassID)
+                BEGIN
+                    SELECT 0 AS Success, 'Already enrolled' AS Message;
+                    RETURN;
+                END
+
+                INSERT INTO [HasA] (StudentID, ClassID) VALUES (@StudentID, @ClassID);
+                SELECT 1 AS Success, NULL AS Message;
+            END
+        """
+        cursor.execute(sql_script)
+        conn.commit()
+
+def get_trainer_classes(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+            CREATE OR ALTER PROCEDURE get_TrainerClasses
+                @TrainerID INT
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+                SELECT 
+                    c.ID, 
+                    c.Name, 
+                    p.FName, 
+                    p.LName,
+                    (
+                        SELECT STRING_AGG(CAST(s.Date AS VARCHAR), ', ') 
+                        FROM [Session] s 
+                        WHERE s.ClassID = c.ID
+                    ) AS session_dates,
+                    (
+                        SELECT STRING_AGG(sub.ExName, ', ')
+                        FROM (
+                            SELECT DISTINCT e.Name AS ExName
+                            FROM [Logs] l
+                            JOIN [Exercise] e ON l.ExerciseID = e.ID
+                            JOIN [Session] s ON l.SessionID = s.ID
+                            WHERE s.ClassID = c.ID
+                        ) sub
+                    ) AS exercises
+                FROM [Class] c
+                JOIN [Teaches] t ON c.ID = t.ClassID
+                JOIN [Person] p ON t.TrainerID = p.ID
+                WHERE t.TrainerID = @TrainerID;
+            END
+        """
+        cursor.execute(sql_script)
+        conn.commit()
+
+def get_session_in_class(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+            CREATE OR ALTER PROCEDURE get_ClassSessions
+                @ClassID INT
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+                SELECT 
+                    s.ID, 
+                    s.Date, 
+                    c.Name AS ClassName
+                FROM [Session] s
+                JOIN [Class] c ON s.ClassID = c.ID
+                WHERE s.ClassID = @ClassID
+                ORDER BY s.Date DESC;
+            END
+        """
+        cursor.execute(sql_script)
+        conn.commit()
+
+def delete_class_session(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+            CREATE OR ALTER PROCEDURE delete_ClassSession
+                @ClassID INT,
+                @SessionDate DATE
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+                DECLARE @SessionID INT;
+                SELECT @SessionID = ID FROM [Session] WHERE ClassID = @ClassID AND [Date] = @SessionDate;
+                
+                IF @SessionID IS NULL
+                BEGIN
+                    SELECT 0 AS Result;
+                    RETURN;
+                END
+                
+                DELETE FROM [Set] WHERE SessionID = @SessionID;
+                DELETE FROM [Logs] WHERE SessionID = @SessionID;
+                DELETE FROM [Session] WHERE ID = @SessionID;
+                SELECT 1 AS Result;
             END
         """
         cursor.execute(sql_script)
@@ -386,6 +711,7 @@ def get_pr_sql(connection_string):
                 WHERE a.StudentID = @StudentID
                 ORDER BY e.Category, e.Name
             END
+
         """
         cursor.execute(sql_script)
         conn.commit()
@@ -417,3 +743,461 @@ def get_big3_leaderboard(connection_string):
         cursor.execute(sql_script)
         conn.commit()
 
+# Stored procedure to get campus-wide workouts for the last year
+def get_campus_workouts(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+                        CREATE OR ALTER PROCEDURE get_CampusWorkouts
+                            (
+                                @SinceDate date = NULL
+                            )
+                        AS
+                        BEGIN
+                            IF @SinceDate IS NULL
+                                SET @SinceDate = DATEADD(year, -1, CAST(GETDATE() AS date))
+
+                            SELECT [Date], StartTime, EndTime
+                            FROM [Session]
+                            WHERE [Date] >= @SinceDate
+                            ORDER BY [Date] DESC
+                        END
+                     """
+        cursor.execute(sql_script)
+        conn.commit()
+
+def upsert_set(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+            CREATE OR ALTER PROCEDURE upsert_Set
+                @ExerciseID INT,
+                @SessionID INT,
+                @SetNumber INT,
+                @Weight DECIMAL(5,2),
+                @Reps INT
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+
+                IF EXISTS (
+                    SELECT 1 FROM [Set] 
+                    WHERE SessionID = @SessionID 
+                    AND ExerciseID = @ExerciseID 
+                    AND SetNumber = @SetNumber
+                )
+                BEGIN
+                    UPDATE [Set]
+                    SET Weight = @Weight,
+                        Reps = @Reps
+                    WHERE SessionID = @SessionID 
+                    AND ExerciseID = @ExerciseID 
+                    AND SetNumber = @SetNumber;
+                END
+                ELSE
+                BEGIN
+                    INSERT INTO [Set] (ExerciseID, SessionID, SetNumber, Weight, Reps)
+                    VALUES (@ExerciseID, @SessionID, @SetNumber, @Weight, @Reps);
+                END
+            END
+        """
+        cursor.execute(sql_script)
+        conn.commit()
+
+def get_session_details(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+             CREATE OR ALTER PROCEDURE get_SessionDetails
+                @SessionID int
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+                SELECT 
+                    e.[Name] AS ExerciseName,
+                    e.Category,
+                    s.SetNumber,
+                    s.Weight,
+                    s.Reps,
+                    l.IsPr
+                FROM [Logs] l
+                JOIN [Exercise] e 
+                    ON l.ExerciseID = e.ID
+                LEFT JOIN [Set] s 
+                    ON s.ExerciseID = l.ExerciseID 
+                    AND s.SessionID = l.SessionID
+                WHERE l.SessionID = @SessionID
+                ORDER BY e.[Name], s.SetNumber
+            END
+        """
+        cursor.execute(sql_script)
+        conn.commit()
+
+# Stored procedure to insert PR history row
+def insert_pr_history(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+            CREATE OR ALTER PROCEDURE insert_PRHistory
+                @StudentID INT,
+                @ExerciseName VARCHAR(100),
+                @Weight DECIMAL(7,2),
+                @Reps INT,
+                @OneRM DECIMAL(10,2)
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+
+                DECLARE @ExerciseID INT;
+                SELECT @ExerciseID = ID FROM [Exercise] WHERE [Name] = @ExerciseName;
+
+                IF @ExerciseID IS NULL
+                BEGIN
+                    THROW 51000, 'Exercise not found', 1;
+                END
+
+                IF @StudentID IS NULL OR @Weight IS NULL OR @Reps IS NULL
+                BEGIN
+                    THROW 51001, 'Invalid parameters: StudentID, Weight, and Reps are required', 1;
+                END
+
+                INSERT INTO dbo.PRHistory (StudentID, ExerciseID, [Weight], Reps, OneRM)
+                VALUES (@StudentID, @ExerciseID, @Weight, @Reps, @OneRM);
+            END
+        """
+        cursor.execute(sql_script)
+        conn.commit()
+
+# Stored procedure to get PR progression history
+def get_pr_progression(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+            CREATE OR ALTER PROCEDURE get_PRProgression
+                @StudentID INT
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+
+                IF @StudentID IS NULL
+                BEGIN
+                    THROW 51000, 'StudentID is required', 1;
+                END
+
+                SELECT
+                    e.Name AS ExerciseName,
+                    h.[Weight],
+                    h.Reps,
+                    h.OneRM,
+                    h.RecordedAt
+                FROM dbo.PRHistory h
+                JOIN [Exercise] e ON h.ExerciseID = e.ID
+                WHERE h.StudentID = @StudentID
+                ORDER BY e.Name ASC, h.RecordedAt ASC;
+            END
+        """
+        cursor.execute(sql_script)
+        conn.commit()
+
+# Stored procedure to check if exercise exists
+def check_exercise_exists(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+            CREATE OR ALTER PROCEDURE check_ExerciseExists
+                @ExerciseID INT
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+
+                IF @ExerciseID IS NULL
+                BEGIN
+                    SELECT 0 AS ExerciseExists;
+                    RETURN;
+                END
+
+                IF EXISTS (SELECT 1 FROM [Exercise] WHERE ID = @ExerciseID)
+                    SELECT 1 AS ExerciseExists;
+                ELSE
+                    SELECT 0 AS ExerciseExists;
+            END
+        """
+        cursor.execute(sql_script)
+        conn.commit()
+
+# Stored procedure to get exercise name by ID
+def get_exercise_name(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+            CREATE OR ALTER PROCEDURE get_ExerciseName
+                @ExerciseID INT
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+
+                IF @ExerciseID IS NULL
+                BEGIN
+                    THROW 51000, 'ExerciseID is required', 1;
+                END
+
+                SELECT [Name] FROM [Exercise] WHERE ID = @ExerciseID;
+            END
+        """
+        cursor.execute(sql_script)
+        conn.commit()
+
+# Stored procedure to get exercise leaderboard
+def get_exercise_leaderboard(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+            CREATE OR ALTER PROCEDURE get_ExerciseLeaderboard
+                @ExerciseName VARCHAR(100),
+                @Limit INT = 10
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+
+                IF @ExerciseName IS NULL
+                BEGIN
+                    THROW 51000, 'ExerciseName is required', 1;
+                END
+
+                SELECT TOP (@Limit)
+                    p.Username,
+                    p.FName,
+                    p.LName,
+                    (pr.Weight * (1.0 + pr.Reps / 30.0)) AS Best1RM
+                FROM [PersonalRecord] pr
+                JOIN [Achieves] a ON pr.ID = a.PersonalRecordID
+                JOIN [Of] o ON pr.ID = o.PersonalRecordID
+                JOIN [Exercise] e ON o.ExerciseID = e.ID
+                JOIN [Student] s ON a.StudentID = s.ID
+                JOIN [Person] p ON s.ID = p.ID
+                WHERE e.Name = @ExerciseName
+                ORDER BY Best1RM DESC, p.Username ASC;
+            END
+        """
+        cursor.execute(sql_script)
+        conn.commit()
+
+# Stored procedure to get person ID by username
+def get_person_id_by_username(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+            CREATE OR ALTER PROCEDURE get_PersonIDByUsername
+                @Username VARCHAR(50)
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+
+                IF @Username IS NULL
+                BEGIN
+                    THROW 51000, 'Username is required', 1;
+                END
+
+                SELECT TOP 1 ID FROM [Person] WHERE [Username] = @Username ORDER BY ID DESC;
+            END
+        """
+        cursor.execute(sql_script)
+        conn.commit()
+
+def get_session_exercise_sets(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+            CREATE OR ALTER PROCEDURE get_session_exercise_sets
+                @SessionID INT
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+
+                SELECT
+                    e.ID AS ExerciseID, e.[Name], e.Category, l.IsPr, s.SetNumber, s.[Weight], s.Reps
+                FROM dbo.Logs AS l
+                JOIN dbo.Exercise AS e
+                    ON e.ID = l.ExerciseID
+                JOIN dbo.[Set] AS s
+                    ON s.ExerciseID = e.ID
+                WHERE l.SessionID = @SessionID
+                ORDER BY e.[Name], s.SetNumber;
+            END;
+        """
+        cursor.execute(sql_script)
+        conn.commit()
+
+def get_session_by_id(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+        CREATE OR ALTER PROCEDURE get_session_by_id
+            @SessionID INT
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+
+            SELECT 
+                ID,[Date], StartTime, EndTime, [Location], Notes, Visibility
+            FROM dbo.[Session]
+            WHERE ID = @SessionID;
+        END;
+            """
+        cursor.execute(sql_script)
+        conn.commit()
+def sp_CreateClass(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+        CREATE OR ALTER PROCEDURE sp_CreateClass
+                    @TrainerID INT,
+                    @ClassName NVARCHAR(100)
+                AS
+                BEGIN
+                    SET NOCOUNT ON;
+                    DECLARE @ClassID INT;
+                    INSERT INTO [Class] (Name) VALUES (@ClassName);
+                    SET @ClassID = SCOPE_IDENTITY();
+                    INSERT INTO [Teaches] (TrainerID, ClassID) VALUES (@TrainerID, @ClassID);
+                    SELECT @ClassID AS ClassID;
+                END
+            """
+        cursor.execute(sql_script)
+        conn.commit()
+
+def sp_UpdateClassSession(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+                    CREATE OR ALTER PROCEDURE sp_UpdateClassSession
+                        @ClassID INT,
+                        @SessionDate DATE
+                    AS
+                    BEGIN
+                        SET NOCOUNT ON;
+                        DECLARE @SessionID INT;
+
+                        SELECT @SessionID = ID FROM [Session] WHERE ClassID = @ClassID AND [Date] = @SessionDate;
+
+                        IF @SessionID IS NULL
+                        BEGIN
+                            INSERT INTO [Session] ([Date], ClassID) VALUES (@SessionDate, @ClassID);
+                            SET @SessionID = SCOPE_IDENTITY();
+                        END
+
+                        SELECT @SessionID AS SessionID;
+                    END
+            """
+        cursor.execute(sql_script)
+        conn.commit()
+
+def sp_UpsertExerciseLog(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+                    CREATE OR ALTER PROCEDURE sp_UpsertExerciseLog
+                    @SessionID INT,
+                    @ExName NVARCHAR(100),
+                    @ExCategory NVARCHAR(50)
+                AS
+                BEGIN
+                    SET NOCOUNT ON;
+                    DECLARE @ExerciseID INT;
+
+                    SELECT @ExerciseID = ID FROM [Exercise] WHERE [Name] = @ExName;
+
+                    IF @ExerciseID IS NULL
+                    BEGIN
+                        INSERT INTO [Exercise] ([Name], [Category]) 
+                        VALUES (@ExName, @ExCategory);
+                        SET @ExerciseID = SCOPE_IDENTITY();
+                    END
+
+                    IF NOT EXISTS (SELECT 1 FROM [Logs] WHERE ExerciseID = @ExerciseID AND SessionID = @SessionID)
+                    BEGIN
+                        INSERT INTO [Logs] (ExerciseID, SessionID, IsPr) 
+                        VALUES (@ExerciseID, @SessionID, 0);
+                    END
+
+                    SELECT @ExerciseID AS ExerciseID;
+                END
+            """
+        cursor.execute(sql_script)
+        conn.commit()
+
+def sp_DeleteClass(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+            CREATE OR ALTER PROCEDURE sp_DeleteClass
+                @TrainerID INT,
+                @ClassID INT
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+
+                IF NOT EXISTS (SELECT 1 FROM [Teaches] WHERE TrainerID = @TrainerID AND ClassID = @ClassID)
+                BEGIN
+                    SELECT 0 AS Result;
+                    RETURN;
+                END
+
+                DELETE FROM [Set] WHERE SessionID IN (
+                    SELECT ID FROM [Session] WHERE ClassID = @ClassID
+                )
+                DELETE FROM [Logs] WHERE SessionID IN (
+                    SELECT ID FROM [Session] WHERE ClassID = @ClassID
+                )
+                DELETE FROM [Session] WHERE ClassID = @ClassID
+                DELETE FROM [HasA] WHERE ClassID = @ClassID
+                DELETE FROM [Teaches] WHERE ClassID = @ClassID
+                DELETE FROM [Class] WHERE ID = @ClassID
+
+                SELECT 1 AS Result;
+            END
+        """
+        cursor.execute(sql_script)
+        conn.commit()
+
+def enroll_student(connection_string):
+    with pyodbc.connect(connection_string) as conn:
+        cursor = conn.cursor()
+        sql_script = """
+            CREATE OR ALTER PROCEDURE EnrollStudent
+                @StudentID INT,
+                @ClassID INT
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+
+                IF @StudentID IS NULL OR @ClassID IS NULL
+                BEGIN
+                    SELECT 0 AS Success, 'Missing StudentID or ClassID' AS Message;
+                    RETURN;
+                END
+
+                IF NOT EXISTS (SELECT 1 FROM [Student] WHERE ID = @StudentID)
+                BEGIN
+                    SELECT 0 AS Success, 'Student not found' AS Message;
+                    RETURN;
+                END
+
+                IF NOT EXISTS (SELECT 1 FROM [Class] WHERE ID = @ClassID)
+                BEGIN
+                    SELECT 0 AS Success, 'Class not found' AS Message;
+                    RETURN;
+                END
+
+                IF EXISTS (SELECT 1 FROM [HasA] WHERE StudentID = @StudentID AND ClassID = @ClassID)
+                BEGIN
+                    SELECT 0 AS Success, 'Already enrolled' AS Message;
+                    RETURN;
+                END
+
+                INSERT INTO [HasA] (StudentID, ClassID) VALUES (@StudentID, @ClassID);
+                SELECT 1 AS Success, NULL AS Message;
+            END
+        """
+        cursor.execute(sql_script)
+        conn.commit()

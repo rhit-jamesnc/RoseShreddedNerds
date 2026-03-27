@@ -12,77 +12,73 @@ export default function Dashboard() {
   const [enrolledClasses, setEnrolledClasses] = useState([]);
   const [statusMsg, setStatusMsg] = useState({ type: "", text: "" });
   const [deletingId, setDeletingId] = useState(null);
-  const [totals, setTotals] = useState({ total_minutes: 0, total_sessions: 0 });
+  const [totals, setTotals] = useState({ total_minutes: 0, total_sessions: 0, weekly_sessions: 0 });
+  const [editingId, setEditingId] = useState(null);
+  const [editDate, setEditDate] = useState("");
+  const [deletingSession, setDeletingSession] = useState({ classId: null, date: null });
+  const [availableExercises, setAvailableExercises] = useState([]);
+  const [selectedExercises, setSelectedExercises] = useState([]);
+  const [currentSessionId, setCurrentSessionId] = useState(null);
+  const [confirmDeleteEx, setConfirmDeleteEx] = useState({ exIdx: null });
+  const [viewingSession, setViewingSession] = useState(null);
+  const [removedExerciseIds, setRemovedExerciseIds] = useState([]);
+
 
   // Here I am loading the current user and some of their recentmost workouts
   useEffect(() => {
-    api("/auth/status")
-      .then((resp) => {
-        if (resp && resp.user) setMe(resp.user);
-        else setMe(null);
-      })
-      .catch(() => setMe(null));
+    api("/auth/status").then((resp) => {
+      if (resp?.user) {
+        const user = resp.user;
+        setMe(user);
+        const role = user.role?.toLowerCase();
+        if (role === "trainer") {
+          api("/trainer-classes").then(r => { if (r?.items) setMyClasses(r.items); });
+        } else if (role === "student") {
+          api("/my-classes").then(data => {
+            setEnrolledClasses(Array.isArray(data) ? data : (data?.items || []));
+          });
+        }
+      } else {
+        setMe(null);
+      }
+    }).catch(() => setMe(null));
 
-    api("/workouts")
-      .then((resp) => {
-        // BACKEND RETURNS: { items: [...] }
-        const items = Array.isArray(resp?.items) ? [...resp.items] : [];
-        items.sort((a, b) => {
-          const date_a = (a.date || a.day || "");
-          const date_b = (b.date || b.day || "");
-          if (date_a === date_b) {
-            return (b.created_at || "").localeCompare(a.created_at || "");
-          }
-          return date_b.localeCompare(date_a);
-        });
-        console.log("Dashboard workouts resp:", resp);   // ← debug log
-        setWorkouts(items);
-      })
-      .catch((e) => {
-        console.error(e);
-        setErr("Could not load your workouts.");
-        setWorkouts([]);
-      });
-    api("/dashboard/stats")
-      .then((resp) => {
-        if (resp?.totals) setTotals(resp.totals);
-      })
-      .catch(() => setTotals({ total_minutes: 0, total_sessions: 0 }));
+    api("/workouts").then((resp) => {
+      const items = Array.isArray(resp?.items) ? [...resp.items] : [];
+      items.sort((a, b) => (b.date || b.day || "").localeCompare(a.date || a.day || ""));
+      setWorkouts(items);
+    }).catch(() => { setErr("Could not load your workouts."); setWorkouts([]); });
+
+    api("/dashboard/stats").then((resp) => {
+      if (resp?.totals) setTotals(resp.totals);
+    }).catch(() => {});
+
+    api('/exercises').then(data => setAvailableExercises(data?.items || data || [])).catch(() => {});
+    api('/sessions').then(data => { if (data?.length > 0) setCurrentSessionId(data[0].id); });
   }, []);
-
-  useEffect(() => {
-    console.log("Current User for Class Fetch:", me); // Check this in F12 console
-  if (me?.role === "trainer") {
-    api("/trainer-classes").then(resp => {
-      if (resp?.items) setMyClasses(resp.items);
-    });
-  }
-  }, [me]);
-
-  useEffect(() => {
-    if (me?.role === 'student') {
-      api('/my-classes')
-        .then(data => {
-          console.log("Enrolled classes data:", data);
-          if (Array.isArray(data)) {
-            setEnrolledClasses(data);
-          } else if (data?.items) {
-            setEnrolledClasses(data.items);
-          }
-        })
-        .catch(err => console.error("Failed to load enrolled classes:", err));
-    }
-  }, [me]);
 
 
   // These are helper functions that I created for calculating dashboard based statistics
-  function parseDate(d) {
-    if (!d) return null;
+  function parseDate(rawDate) {
+    if (!rawDate) return null;
+    if (rawDate instanceof Date && !Number.isNaN(rawDate.getTime())) return rawDate;
 
-    const [y, m, day] = d.split("-").map(Number);
-    if (!y || !m || !day) return null;
+    const str = String(rawDate).trim();
+    if (!str) return null;
 
-    return new Date(y, m - 1, day);
+    //prefer YYYY-MM-DD and also handle datetime strings like YYYY-MM-DDTHH:mm:ss
+    const dateOnly = str.includes("T") ? str.slice(0, 10) : str;
+    const isoMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateOnly);
+    if (isoMatch) {
+      const y = Number(isoMatch[1]);
+      const m = Number(isoMatch[2]);
+      const d = Number(isoMatch[3]);
+      const parsed = new Date(y, m - 1, d);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    const fallback = new Date(str);
+    return Number.isNaN(fallback.getTime()) ? null : fallback;
   }
 
   // This is a very compact and clean way of defining multiple variables and assigning them value simultaneous via a return/callback
@@ -91,7 +87,6 @@ export default function Dashboard() {
   const {
     //totalWorkouts,
     //lastWorkout,
-    weeklyMinutes,
     weeklyCount,
     weeklyDaysTrained,
   } = useMemo(() => {
@@ -106,11 +101,10 @@ export default function Dashboard() {
     }
 
     const today = new Date();
-    const sevenDaysAgo = new Date(
-      today.getFullYear(),
-      today.getMonth(),
-      today.getDate() - 6
-    );
+    today.setHours(23, 59, 59, 999);
+    const sevenDaysAgo = new Date(today);
+    sevenDaysAgo.setDate(today.getDate() - 6);
+    sevenDaysAgo.setHours(0, 0, 0, 0);
 
     // This is the main part where I am actually making most of my calculations and computations for the Dashboard
     let weeklyMinutes = 0;
@@ -119,12 +113,12 @@ export default function Dashboard() {
 
     // GOing over all the workouts to make the weekly minutes calculation
     for (const w of workouts) {
-      const dateStr = w.date || w.day;
+      const dateStr = w.date || w.day || w.Date;
       const d = parseDate(dateStr);
       if (!d) continue;
 
       if (d >= sevenDaysAgo && d <= today) {
-        weeklyMinutes += Number(w.duration_minutes || 0);
+        weeklyMinutes += Number(w.duration_minutes ?? w.duration ?? 0);
         weeklyCount += 1;
         weeklyDates.add(dateStr);
       }
@@ -148,13 +142,13 @@ export default function Dashboard() {
     try {
       const response = await api("/classes/create", {
         method: "POST",
-        body: JSON.stringify({ name: newClassName }),
+        body: ({ name: newClassName }),
       });
 
       if (response && !response.error) {
         setStatusMsg({ type: "success", text: `Class "${newClassName}" created successfully!` });
-        setMyClasses([...myClasses, { id: response.class_id, name: newClassName }]);        setMyClasses([...myClasses, { id: response.class_id, name: newClassName }]);
-        setNewClassName(""); // Clear the input
+        setMyClasses([...myClasses, { id: response.class_id, name: newClassName }]);
+        setNewClassName("");
       } else {
         setStatusMsg({ type: "danger", text: response.error || "Failed to create class." });      }
     } catch (e) {
@@ -177,6 +171,200 @@ export default function Dashboard() {
       setDeletingId(null); // Reset confirmation state
     }
   };
+
+  const handleUnenroll = async (classId) => {
+    try {
+      const response = await api(`/classes/${classId}/unenroll`, {
+        method: "POST",
+      });
+
+      if (response && !response.error) {
+        setStatusMsg({ type: "success", text: "Successfully unenrolled from class." });
+        setEnrolledClasses(enrolledClasses.filter((cls) => cls.id !== classId));
+      } else {
+        setStatusMsg({ type: "danger", text: response.error || "Failed to unenroll." });
+      }
+    } catch (e) {
+      console.error(e);
+      setStatusMsg({ type: "danger", text: "An error occurred while unenrolling." });
+    }
+  };
+
+  const handleSaveSession = async (classId) => {
+    try {
+      const exercisesToSave = (selectedExercises || []).filter(
+        ex => !removedExerciseIds.includes(ex.id)
+      );
+
+      const sessionResp = await api(`/classes/${classId}/update-session`, {
+        method: 'POST',
+        body: { 
+          session_date: editDate,
+          exercises: exercisesToSave
+        }
+      });
+
+      const realSessionId = sessionResp.session_id;
+      const exerciseIdMap = sessionResp.exercise_id_map || {};
+
+      const allSetPromises = exercisesToSave.flatMap((ex) => {
+        const realExerciseId = exerciseIdMap[ex.name.trim().toLowerCase()] || ex.id;
+        console.log(`Exercise: ${ex.name}, realExerciseId: ${realExerciseId}, sessionId: ${realSessionId}`);
+
+        return (Array.isArray(ex.sets) ? ex.sets : []).map((set, index) => {
+          return api('/sets', {
+            method: 'POST',
+            body: {
+              SessionID: realSessionId,
+              ExerciseID: realExerciseId,
+              SetNumber: set.setNumber || (index + 1),
+              weight: parseFloat(set.weight) || 0,
+              reps: parseInt(set.reps) || 0
+            }
+          });
+        });
+      });
+
+      await Promise.all(allSetPromises);
+
+      setMyClasses(prev => prev.map(cls => {
+        if (cls.id === classId) {
+          const currentDates = cls.session_dates && cls.session_dates !== "Not Set" 
+            ? cls.session_dates.split(", ") 
+            : [];
+          
+          if (!currentDates.includes(editDate)) {
+            const updatedDates = [...currentDates, editDate].sort().join(", ");
+            return { ...cls, session_dates: updatedDates };
+          }
+        }
+        return cls;
+      }));
+
+      setStatusMsg({ type: "success", text: "Session saved!" });
+      setEditingId(null);
+    } catch (e) {
+      setStatusMsg({ type: "danger", text: e.message });
+    }
+  };
+
+  const handleDeleteSession = async (classId, dateToDelete) => {
+    try {
+      const response = await api(`/classes/${classId}/delete-session`, {
+        method: "DELETE",
+        body: { session_date: dateToDelete },
+      });
+
+      if (response && !response.error) {
+        setMyClasses(prev => prev.map(cls => {
+          if (cls.id === classId) {
+            const dateArray = cls.session_dates.split(", ").filter(d => d !== dateToDelete);
+            return {
+              ...cls,
+              session_dates: dateArray.length > 0 ? dateArray.join(", ") : "Not Set"
+            };
+          }
+          return cls;
+        }));
+        setStatusMsg({ type: "success", text: `Session on ${dateToDelete} removed.` });
+      } else {
+        setStatusMsg({ type: "danger", text: response.error || "Delete failed." });
+      }
+    } catch {
+      setStatusMsg({ type: "danger", text: "An error occurred during deletion." });
+    } finally {
+      setDeletingSession({ classId: null, date: null });
+    }
+  };
+
+  const addSetToExercise = (exIdx) => {
+    const newExercises = [...selectedExercises];
+    const currentSets = newExercises[exIdx].sets || [];
+    
+    const newSet = {
+      setNumber: currentSets.length + 1,
+      weight: 0,
+      reps: 0
+    };
+    
+    newExercises[exIdx].sets = [...currentSets, newSet];
+    setSelectedExercises(newExercises);
+  };
+
+  const updateSetData = (exIdx, setIdx, field, value) => {
+    const newExercises = [...selectedExercises];
+    let formattedValue = value;
+    if (value !== "") {
+      formattedValue = field === 'weight' ? parseFloat(value) : parseInt(value);
+    }
+
+    newExercises[exIdx].sets[setIdx][field] = formattedValue;
+    setSelectedExercises(newExercises);
+  };
+
+  const removeSet = (exIdx, setIdx) => {
+    const newExercises = [...selectedExercises];
+    newExercises[exIdx].sets = newExercises[exIdx].sets
+      .filter((_, i) => i !== setIdx)
+      .map((set, i) => ({ ...set, setNumber: i + 1 }));
+    setSelectedExercises(newExercises);
+  };
+
+  const removeExercise = async (exIdx, sessionId, exerciseId) => {
+    if (sessionId && exerciseId) {
+      try {
+        const response = await api(`/sessions/${sessionId}/exercises/${exerciseId}`, { 
+          method: 'DELETE' 
+        });
+
+        if (exerciseId) {
+          setRemovedExerciseIds(prev => [...prev, exerciseId]);
+        }
+
+        if (response && response.error) {
+          setStatusMsg({ type: "danger", text: response.error });
+          return;
+        }
+
+        setStatusMsg({ type: "success", text: "Exercise removed from database." });
+      } catch (e) {
+        console.error("Delete error:", e);
+        setStatusMsg({ type: "danger", text: "Server error: Could not delete exercise." });
+        return;
+      }
+    }
+
+    const newExercises = selectedExercises.filter((_, i) => i !== exIdx);
+    setSelectedExercises(newExercises);
+    setConfirmDeleteEx({ exIdx: null });
+  };
+
+  const handleViewSession = (classId, date) => {
+    setStatusMsg({ type: "", text: "" });
+    api(`/sessions/details?date=${date}&classId=${classId}`)
+      .then(data => {
+        // Group the flat rows by Exercise Name for better display
+        const grouped = data.reduce((acc, row) => {
+        if (!acc[row.ExerciseName]) {
+          acc[row.ExerciseName] = { category: row.Category, sets: [] };
+        }
+        if (row.SetNumber) {
+          acc[row.ExerciseName].sets.push({
+            number: row.SetNumber,
+            weight: row.Weight,
+            reps: row.Reps
+          });
+        }
+        return acc;
+      }, {});
+      
+      setViewingSession({ date, exercises: grouped });
+    })
+    .catch(err => {
+      console.error("Session detail error:", err);
+      setStatusMsg({ type: "danger", text: "Failed to load session details" });
+    });
+};
   
   return (
     <div className="dashboard-page py-3">
@@ -214,7 +402,7 @@ export default function Dashboard() {
               <Card.Subtitle className="mb-2 text-muted small">Last 7 days</Card.Subtitle>
 
               <div className="display-6 fw-semibold mb-1">
-                {weeklyMinutes} <span className="fs-6">min</span>
+                {totals.weekly_sessions} <span className="fs-6">sessions</span>
               </div>
               <p className="small text-muted mb-2">
                 {weeklyCount === 0 ? "No sessions logged yet this week." : `Across ${weeklyCount} workout${
@@ -271,7 +459,8 @@ export default function Dashboard() {
         </Col>
       </Row>
 
-      {me?.role === "trainer" && (
+      
+      {me?.role?.toLowerCase() === "trainer" && (
         <Row className="mb-4">
           <Col md={12}>
             <Card className="border-primary shadow-sm">
@@ -297,26 +486,294 @@ export default function Dashboard() {
               <Card.Body>
                 <Card.Title>Your Active Classes</Card.Title>
                 <ul className="list-group list-group-flush">
-                  {myClasses.map(c => (
-                    <li key={c.id} className="list-group-item d-flex justify-content-between align-items-center py-3">
-                      <div>
-                        <span className="fw-bold">{c.name}</span> <span className="text-muted small">#({c.id})</span>
+                  {myClasses.map((c) => (
+                    <li key={c.id} className="list-group-item py-3">
+                      <div className="d-flex justify-content-between align-items-start">
+                        <div className="flex-grow-1">
+                          <span className="fw-bold fs-5">{c.name}</span>
+                          
+                          {/* Session History Section */}
+                          <div className="text-muted small mt-2">
+                            <label className="fw-bold d-block mb-1">Session History:</label>
+                            <div className="d-flex flex-column gap-2 mt-1">
+                              {c.session_dates && c.session_dates !== "Not Set" ? (
+                                c.session_dates.split(", ").map((date, index) => (
+                                  /* Changed to d-inline-block and added a max-width to keep them small */
+                                  <div key={index} className="border rounded p-2 bg-white shadow-sm d-inline-block" style={{ minWidth: '200px', width: 'fit-content' }}>
+                                    <div className="d-flex justify-content-between align-items-center gap-3">
+                                      {/* Left Side: Date */}
+                                      <Badge bg="info" className="px-2 py-1" style={{ fontSize: '0.75rem' }}>{date}</Badge>
+                                      
+                                      {/* Right Side: Buttons */}
+                                      <div className="d-flex align-items-center gap-2">
+                                        {deletingSession.classId === c.id && deletingSession.date === date ? (
+                                          <div className="d-flex align-items-center gap-1">
+                                            <Button variant="danger" size="sm" className="py-0 px-1" style={{ fontSize: '0.65rem' }} onClick={() => handleDeleteSession(c.id, date)}>Yes</Button>
+                                            <Button variant="secondary" size="sm" className="py-0 px-1" style={{ fontSize: '0.65rem' }} onClick={() => setDeletingSession({ classId: null, date: null })}>No</Button>
+                                          </div>
+                                        ) : (
+                                          <>
+                                            <Button 
+                                              variant="link" 
+                                              className="p-0 text-decoration-none text-muted d-flex align-items-center" 
+                                              onClick={async () => {
+                                                const targetId = c.id;
+                                                const targetDate = date;
+
+                                                setEditingId(targetId);
+                                                setEditDate(targetDate);
+                                                setSelectedExercises([]);
+
+                                                try {
+                                                  const response = await api(`/sessions/details?date=${targetDate}&classId=${targetId}`);
+                                                  if (response && Array.isArray(response)) {
+                                                      if (response.length > 0) {
+                                                          setCurrentSessionId(response[0].session_id);
+                                                      }
+                                                      const grouped = response.reduce((acc, row) => {
+                                                          let ex = acc.find(e => e.name === row.ExerciseName);
+                                                          if (!ex) {
+                                                              ex = { name: row.ExerciseName, category: row.Category, sets: [] };
+                                                              acc.push(ex);
+                                                          }
+                                                          if (row.SetNumber !== null) {
+                                                              ex.sets.push({
+                                                                  setNumber: row.SetNumber,
+                                                                  weight: row.Weight,
+                                                                  reps: row.Reps
+                                                              });
+                                                          }
+                                                          return acc;
+                                                      }, []);
+                                                      setSelectedExercises(grouped);
+                                                  }
+                                                } catch (err) {
+                                                  console.error("Failed to load session details", err);
+                                                }
+                                              }}
+                                            >
+                                              <i className="bi bi-pencil-square me-1"></i>
+                                              <span>Edit</span>
+                                            </Button>
+                                            
+                                            <Button 
+                                              variant="link" 
+                                              className="p-0 text-decoration-none text-danger d-flex align-items-center" 
+                                              onClick={() => setDeletingSession({ classId: c.id, date: date })}
+                                            >
+                                              <i className="bi bi-trash me-1" style={{ fontSize: '0.8rem' }}></i>
+                                              <span style={{ fontSize: '0.75rem' }}>Delete</span>
+                                            </Button>
+                                          </>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {/* Exercises Text - only shows if exists, kept small */}
+                                    {c.exercises && (
+                                      <div className="mt-1 text-dark pt-1 border-top" style={{ fontSize: '0.75rem', fontStyle: 'italic' }}>
+                                        {c.exercises}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))
+                              ) : (
+                                <Badge bg="secondary">No Sessions</Badge>
+                              )}
+                            </div>
+                          </div>
                       </div>
+
+                        {/* Main Class Actions (The buttons that were missing/squished) */}
+                        <div className="d-flex gap-2 ms-3">
+                          <Button 
+                            variant="outline-secondary" 
+                            size="sm" 
+                            onClick={() => {
+                              if (editingId === c.id) {
+                                setEditingId(null);
+                                setEditDate("");
+                                setSelectedExercises([]);
+                                setRemovedExerciseIds([]);
+                              } else {
+                                setEditingId(c.id);
+                                setEditDate("");
+                                setSelectedExercises([]);
+                                setRemovedExerciseIds([]);
+                              }
+                            }}
+                          >
+                            {editingId === c.id ? "Close" : "Add Session"}
+                          </Button>
                       
                       {deletingId === c.id ? (
-                        <div className="bg-light p-2 border rounded d-flex align-items-center gap-2">
-                          <span className="small text-danger fw-bold">Delete?</span>
+                            <div className="bg-light p-1 border rounded d-flex gap-1 align-items-center">
+                              <span className="small text-danger fw-bold px-1">Class?</span>
                           <Button variant="danger" size="sm" onClick={() => confirmDeleteClass(c.id)}>Yes</Button>
                           <Button variant="secondary" size="sm" onClick={() => setDeletingId(null)}>No</Button>
+                            </div>
+                          ) : (
+                            <Button variant="outline-danger" size="sm" onClick={() => setDeletingId(c.id)}>
+                              Delete Class
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* The Edit Panel */}
+                      {editingId === c.id && (
+                        <div className="mt-3 p-3 border rounded bg-light shadow-sm">
+                          <h6 className="small fw-bold text-uppercase text-muted mb-3 border-bottom pb-2">
+                            Update Session Details
+                          </h6>
+                          <Row className="g-3">
+                            <Col md={4}>
+                              <div className="form-group">
+                                <label className="small fw-bold mb-1 d-block">Session Date</label>
+                                <input 
+                                  type="date" 
+                                  className="form-control form-control-sm" 
+                                  value={editDate} 
+                                  onChange={(e) => setEditDate(e.target.value)} 
+                                />
+                              </div>
+                            </Col>
+
+                            <div className="mb-3 p-2 border rounded bg-white">
+                              <label className="small fw-bold mb-1 d-block text-primary">Add New Exercise to Session</label>
+                              <div className="d-flex gap-2">
+                                <select 
+                                  className="form-select form-select-sm"
+                                  onChange={(e) => {
+                                    const exId = parseInt(e.target.value);
+                                    if (!exId) return;
+                                    const exObj = availableExercises.find(a => a.id === exId);
+                                    if (exObj) {
+                                      setSelectedExercises([...selectedExercises, { 
+                                        id: exObj.id, 
+                                        name: exObj.name, 
+                                        sets: [{ setNumber: 1, weight: 0, reps: 0 }] 
+                                      }]);
+                                    }
+                                    e.target.value = "";
+                                  }}
+                                >
+                                  <option value="">-- Select Exercise to Add --</option>
+                                  {availableExercises
+                                    .filter(a => !selectedExercises.some(se => se.id === a.id)) // Hide already added
+                                    .map(a => (
+                                      <option key={a.id} value={a.id}>{a.name}</option>
+                                    ))
+                                  }
+                                </select>
+                              </div>
+                            </div>
+                            
+                            <Col md={8}>
+                              <label className="small fw-bold mb-1 d-block">Exercises in this Session</label>
+                              <div className="exercise-edit-list">
+                                {selectedExercises.map((ex, exIdx) => (
+                                  <div key={ex.id || exIdx} className="border rounded p-3 mb-3 bg-white shadow-sm">
+                                    <div className="d-flex justify-content-between align-items-center border-bottom pb-2 mb-3">
+                                      <div>
+                                        <h5 className="h6 mb-0 fw-bold text-primary">{ex.name}</h5>
+                                      </div>
+                                      <div className="d-flex align-items-center">
+                                        {confirmDeleteEx.exIdx === exIdx ? (
+                                          <div className="bg-light p-1 border rounded d-flex gap-1 align-items-center">
+                                            <span className="small text-danger fw-bold px-1">Remove all sets?</span>
+                                            <Button 
+                                              variant="danger" 
+                                              size="sm" 
+                                              onClick={() => removeExercise(exIdx, currentSessionId, ex.id)}
+                                            >
+                                              Yes
+                                            </Button>
+                                            <Button 
+                                              variant="secondary" 
+                                              size="sm" 
+                                              onClick={() => setConfirmDeleteEx({ exIdx: null })}
+                                            >
+                                              No
+                                            </Button>
                         </div>
                       ) : (
                         <Button 
                           variant="outline-danger" 
                           size="sm" 
-                          onClick={() => setDeletingId(c.id)}
+                                            onClick={() => setConfirmDeleteEx({ exIdx: exIdx })}
                         >
-                          Delete
+                                            <i className="bi bi-trash me-1"></i>
+                                            Remove
                         </Button>
+                                        )}
+                                      </div>
+                                    </div>
+                                    
+                                    {(Array.isArray(ex.sets) ? ex.sets : []).map((set, setIdx) => (
+                                      <Row key={setIdx} className="mb-3 align-items-end g-2">
+                                        <Col xs={2}>
+                                          <label className="small text-muted d-block mb-1">Set</label>
+                                          <input 
+                                            type="text" 
+                                            readOnly 
+                                            className="form-control form-control-sm bg-light text-center fw-bold" 
+                                            value={set.setNumber} 
+                                          />
+                                        </Col>
+                                        <Col xs={4}>
+                                          <label className="small text-muted d-block mb-1">Weight (kg/lbs)</label>
+                                          <input 
+                                            type="number" 
+                                            className="form-control form-control-sm" 
+                                            placeholder="0"
+                                            value={set.weight}
+                                            onChange={(e) => updateSetData(exIdx, setIdx, 'weight', e.target.value)}
+                                          />
+                                        </Col>
+                                        <Col xs={4}>
+                                          <label className="small text-muted d-block mb-1">Reps</label>
+                                          <input 
+                                            type="number" 
+                                            className="form-control form-control-sm" 
+                                            placeholder="0"
+                                            value={set.reps}
+                                            onChange={(e) => updateSetData(exIdx, setIdx, 'reps', e.target.value)}
+                                          />
+                                        </Col>
+                                        <Col xs={2}>
+                                          <Button 
+                                            variant="outline-danger" 
+                                            size="sm" 
+                                            className="w-100" 
+                                            onClick={() => removeSet(exIdx, setIdx)}
+                                          >
+                                            &times;
+                                          </Button>
+                                        </Col>
+                                      </Row>
+                                    ))}
+                                    
+                                    <Button 
+                                      variant="outline-primary" 
+                                      size="sm" 
+                                      className="mt-1"
+                                      onClick={() => addSetToExercise(exIdx)}
+                                    >
+                                      + Add Set
+                                    </Button>
+                                  </div>
+                                ))}
+                              </div>
+                            </Col>
+                          </Row>
+                          
+                          <div className="mt-3 pt-3 border-top text-end">
+                            <Button variant="success" size="sm" onClick={() => handleSaveSession(c.id)}>
+                              Save Session Changes
+                            </Button>
+                          </div>
+                        </div>
                       )}
                     </li>
                   ))}
@@ -327,17 +784,66 @@ export default function Dashboard() {
         </Row>
       )}
 
-      {me?.role === 'student' && (
+      {me?.role?.toLowerCase() === 'student' && (
         <Row className="mb-4">
           <Col md={12}>
             <Card className="shadow-sm border-info">
               <Card.Body>
-                <Card.Title className="text-info">My Enrolled Classes</Card.Title>
-                <Card.Subtitle className="mb-3 text-muted small">
+                <div className="d-flex justify-content-between align-items-center mb-3">
+                  <div>
+                    <Card.Title className="text-info mb-0">
+                      {viewingSession ? `Workout Details: ${viewingSession.date}` : "My Enrolled Classes"}
+                    </Card.Title>
+                    {!viewingSession && (
+                      <Card.Subtitle className="text-muted small">
                   Your current schedule from the SRC
                 </Card.Subtitle>
-                
-                {enrolledClasses.length === 0 ? (
+                    )}
+                  </div>
+                  {viewingSession && (
+                    <Button variant="outline-info" size="sm" onClick={() => setViewingSession(null)}>
+                      &larr; Back to Classes
+                    </Button>
+                  )}
+                </div>
+
+                {viewingSession ? (
+                  <Row>
+                    {Object.entries(viewingSession.exercises).length > 0 ? (
+                      Object.entries(viewingSession.exercises).map(([name, data]) => (
+                        <Col key={name} md={6} lg={4} className="mb-3">
+                          <div className="p-3 border rounded bg-white h-100 shadow-sm">
+                            <div className="d-flex justify-content-between align-items-center mb-2">
+                              <h6 className="fw-bold mb-0 text-dark">{name}</h6>
+                              <Badge bg="secondary" className="small">{data.category}</Badge>
+                            </div>
+                            <table className="table table-sm table-borderless mb-0 small">
+                              <thead className="text-muted border-bottom">
+                                <tr>
+                                  <th>Set</th>
+                                  <th>Weight</th>
+                                  <th>Reps</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {data.sets.map((s, i) => (
+                                  <tr key={i}>
+                                    <td>{s.number}</td>
+                                    <td>{s.weight} lbs</td>
+                                    <td>{s.reps}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </Col>
+                      ))
+                    ) : (
+                      <Col><p className="text-muted italic small text-center py-4">No exercise data found for this session.</p></Col>
+                    )}
+                  </Row>
+                ) : (
+                  enrolledClasses.length === 0 ? (
                   <p className="text-muted italic small">You haven't joined any classes yet.</p>
                 ) : (
                   <Row>
@@ -346,13 +852,40 @@ export default function Dashboard() {
                         <div className="p-3 rounded border border-info bg-light h-100">
                           <h6 className="mb-1 fw-bold">{cls.name}</h6>
                           <div className="small text-muted">Trainer: {cls.trainer_name}</div>
-                          <div className="text-muted mt-2" style={{ fontSize: '0.7rem' }}>
-                            Class ID: {cls.id}
+                            <div className="session-history">
+                              <label className="d-block small fw-bold text-muted">Session History:</label>
+                              {cls.session_dates && cls.session_dates !== "Not Set" ? (
+                                <div className="d-flex flex-wrap gap-1">
+                                  {cls.session_dates.split(', ').map((date, index) => (
+                                    <Badge 
+                                      key={index} 
+                                      bg="light" 
+                                      text="dark" 
+                                      className="border" 
+                                      style={{ cursor: 'pointer' }} 
+                                      onClick={() => handleViewSession(cls.id, date)}
+                                    >
+                                      {date}
+                                    </Badge>
+                                  ))}
                           </div>
+                              ) : (
+                                <span className="text-muted small italic">No sessions recorded</span>
+                              )}
+                            </div>
+                            <Button 
+                              variant="outline-danger" 
+                              size="sm" 
+                              className="mt-3 w-100"
+                              onClick={() => handleUnenroll(cls.id)}
+                            >
+                              Leave Class
+                            </Button>
                         </div>
                       </Col>
                     ))}
                   </Row>
+                  )
                 )}
               </Card.Body>
             </Card>
