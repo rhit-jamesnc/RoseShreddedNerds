@@ -24,11 +24,13 @@ load_dotenv(_ENV_PATH, override=True)
 DB_SERVER  = os.getenv("DB_SERVER")
 DB_DRIVER  = os.getenv("DB_DRIVER", "{ODBC Driver 17 for SQL Server}")
 TARGET_DB  = os.getenv("DB_NAME")
+username = os.getenv("DB_USERNAME")
+password = os.getenv("DB_PASSWORD")
 
 def get_conn():
     cs = (
         f"DRIVER={DB_DRIVER};SERVER={DB_SERVER};DATABASE={TARGET_DB};"
-        f"Trusted_Connection=yes;TrustServerCertificate=yes;"
+        f"UID={username};PWD={password};TrustServerCertificate=yes;"
     )
     return pyodbc.connect(cs)
 

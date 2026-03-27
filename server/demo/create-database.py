@@ -25,13 +25,13 @@ print("USER:", username)
 
 connection_string_master = (
     f"DRIVER={driver};SERVER={server};DATABASE=master;"
-    f"Trusted_Connection=yes;Encrypt={encrypt};"
+    f"UID={username};PWD={password};Encrypt={encrypt};"
     f"TrustServerCertificate={trust_server_certificate};"
 )
 
 connection_string_database = (
     f"DRIVER={driver};SERVER={server};DATABASE={database};"
-    f"Trusted_Connection=yes;Encrypt={encrypt};"
+    f"UID={username};PWD={password};Encrypt={encrypt};"
     f"TrustServerCertificate={trust_server_certificate};"
 )
 
