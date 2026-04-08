@@ -185,9 +185,10 @@ export default function Workouts() {
     }
   }
 
-  function exerciseNameById(id) {
-    const exercise = exercises.find((exercise) => exercise.id === id);
-    return exercise ? exercise.name : `#${id}`;
+  function prLabel(pr) {
+    if (pr?.exercise_name) return pr.exercise_name;
+    if (pr?.exercise_id) return prLabel(pr);
+    return "Exercise";
   }
 
   return (
@@ -340,7 +341,7 @@ export default function Workouts() {
                     {prs.map((pr, i) => (
                       <span key={pr.id || i}>
                         {i > 0 ? ", " : ""}
-                        {exerciseNameById(pr.exercise_id)} —{" "}
+                        {prLabel(pr)} —{" "}
                         {pr.best_weight_kg} kg x {pr.best_reps}{" "}
                         <Badge bg="light" text="dark">est. {pr.best_1rm_kg.toFixed(1)} kg 1RM</Badge>
                       </span>
